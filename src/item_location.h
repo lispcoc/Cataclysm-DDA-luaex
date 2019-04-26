@@ -32,8 +32,13 @@ class item_location
         };
 
         item_location();
+#ifdef LUA
+        item_location( const item_location & ) = default;
+        item_location &operator= ( const item_location & ) = default;
+#else
         item_location( const item_location & ) = delete;
         item_location &operator= ( const item_location & ) = delete;
+#endif
         item_location( item_location && );
         item_location &operator=( item_location && );
         ~item_location();

@@ -169,3 +169,8 @@ Xcode/
 
 # gdb
 .gdb_history
+
+# lua-extention
+/lua/doxygen/html/*
+/lua/doxygen/xml/*
+/src/lua/*.cpp

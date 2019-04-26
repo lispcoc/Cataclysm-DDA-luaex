@@ -754,9 +754,17 @@ class Character : public Creature, public visitable<Character>
 
     protected:
         Character();
+#ifdef LUA
+        Character( const Character & ) = default;
+#else
         Character( const Character & ) = delete;
+#endif
         Character( Character && );
+#ifdef LUA
+        Character &operator=( const Character & ) = default;
+#else
         Character &operator=( const Character & ) = delete;
+#endif
         Character &operator=( Character && );
         struct trait_data {
             /** Whether the mutation is activated. */

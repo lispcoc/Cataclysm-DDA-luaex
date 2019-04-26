@@ -156,10 +156,18 @@ class player : public Character
 {
     public:
         player();
+#ifdef LUA
+        player( const player & ) = default;
+#else
         player( const player & ) = delete;
+#endif
         player( player && );
         ~player() override;
+#ifdef LUA
+        player &operator=( const player & ) = default;
+#else
         player &operator=( const player & ) = delete;
+#endif
         player &operator=( player && );
 
         // newcharacter.cpp

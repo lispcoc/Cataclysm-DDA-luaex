@@ -485,9 +485,17 @@ class npc : public player
     public:
 
         npc();
+#ifdef LUA
+        npc( const npc & ) = default;
+#else
         npc( const npc & ) = delete;
+#endif
         npc( npc && );
+#ifdef LUA
+        npc &operator=( const npc & ) = default;
+#else
         npc &operator=( const npc & ) = delete;
+#endif
         npc &operator=( npc && );
         ~npc() override;
 
