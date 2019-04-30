@@ -312,9 +312,6 @@ class time_duration
 
         /// Allows writing `time_duration d = 0;`
         time_duration( const std::nullptr_t ) : turns_( 0 ) { }
-#ifdef LUA
-        time_duration() : turns_( 0 ) { }
-#endif
 
         static time_duration read_from_json_string( JsonIn &jsin );
 

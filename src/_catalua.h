@@ -67,7 +67,6 @@
 #include "bonuses.h"
 #include "gun_mode.h"
 #include "mod_tileset.h"
-#include "sidebar.h"
 #include "calendar.h"
 #include "harvest.h"
 #include "monattack.h"

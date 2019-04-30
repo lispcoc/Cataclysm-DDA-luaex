@@ -64,20 +64,10 @@ void register_iuse( const std::string, kaguya::LuaFunction )
     printf("to be done");
 }
 
-#if 0 //LUAINTF test
-#define LUAINTF_LINK_LUA_COMPILED_IN_CXX 0
-#include "LuaIntf/LuaIntf.h"
-#include "lua/sol.hpp"
-
-//#define LUA_MEMFN(t, r, m, ...) static_cast<r(t::*)(__VA_ARGS__)>(&t::m)
-#define LUA_MEMFN_CONST(t, r, m, ...) static_cast<r(t::*)(__VA_ARGS__) const>(&t::m)
-
-void dummy()
+//
+// Dummy functions
+//
+int player::calories_for( const item & ) const
 {
-    sol::state lua;
-    lua.open_libraries(sol::lib::base, sol::lib::math);
-    sol::table metatable;
-    lua_State *L = lua.lua_state();
-    #include "lua/lua_bindings.cpp"
+    return 0;
 }
-#endif
