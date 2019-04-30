@@ -9233,7 +9233,7 @@
           "rotates": false
         },
         {
-          "id": "potato_raw",
+          "id": "potato",
           "fg": 1303,
           "bg": 957,
           "rotates": false
@@ -12592,7 +12592,7 @@
           "rotates": false
         },
         {
-          "id": "potato_irradiated",
+          "id": "irradiated_potato",
           "fg": 1303,
           "bg": 957
         },
@@ -22886,7 +22886,7 @@
           "rotates": false
         },
         {
-          "id": ["milk", "rice_milk", "milkshake", "milkshake_deluxe", "milkshake_fastfood"],
+          "id": ["milk", "rice_milk", "milkshake", "milkshake_deluxe", "milkshake_fastfood", "almond_milk", "soy_milk"],
           "fg": 1153,
           "rotates": false
         },
@@ -22918,7 +22918,7 @@
           "fg": 1154
         },
         {
-          "id": ["cooking_oil", "oil_garlic"],
+          "id": [ "cooking_oil", "cooking_oil2", "oil_garlic" ],
           "fg": 1156,
           "rotates": false
         },
@@ -38014,6 +38014,11 @@
         },
         {
           "id": "cursor",
+          "fg": 2853,
+          "rotates": false
+        },
+        {
+          "id": "highlight",
           "fg": 2853,
           "rotates": false
         },

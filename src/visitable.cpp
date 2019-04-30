@@ -1,5 +1,12 @@
 #include "visitable.h"
 
+#include <limits.h>
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+
 #include "bionics.h"
 #include "character.h"
 #include "debug.h"
@@ -9,11 +16,15 @@
 #include "map.h"
 #include "map_selector.h"
 #include "player.h"
-#include "string_id.h"
 #include "submap.h"
 #include "veh_type.h"
 #include "vehicle.h"
 #include "vehicle_selector.h"
+#include "active_item_cache.h"
+#include "enums.h"
+#include "itype.h"
+#include "pimpl.h"
+#include "pldata.h"
 
 /** @relates visitable */
 template <typename T>
@@ -103,7 +114,7 @@ static int has_quality_internal( const T &self, const quality_id &qual, int leve
 
     self.visit_items( [&qual, level, &limit, &qty]( const item * e ) {
         if( e->get_quality( qual ) >= level ) {
-            qty = sum_no_wrap( qty, int( e->count() ) );
+            qty = sum_no_wrap( qty, static_cast<int>( e->count() ) );
             if( qty >= limit ) {
                 return VisitResponse::ABORT; // found sufficient items
             }
@@ -797,7 +808,7 @@ long visitable<inventory>::charges_of( const std::string &what, long limit,
     if( what == "UPS" ) {
         long qty = 0;
         qty = sum_no_wrap( qty, charges_of( "UPS_off" ) );
-        qty = sum_no_wrap( qty, long( charges_of( "adv_UPS_off" ) / 0.6 ) );
+        qty = sum_no_wrap( qty, static_cast<long>( charges_of( "adv_UPS_off" ) / 0.6 ) );
         return std::min( qty, limit );
     }
     const auto &binned = static_cast<const inventory *>( this )->get_binned_items();
@@ -836,9 +847,9 @@ long visitable<Character>::charges_of( const std::string &what, long limit,
     if( what == "UPS" ) {
         long qty = 0;
         qty = sum_no_wrap( qty, charges_of( "UPS_off" ) );
-        qty = sum_no_wrap( qty, long( charges_of( "adv_UPS_off" ) / 0.6 ) );
+        qty = sum_no_wrap( qty, static_cast<long>( charges_of( "adv_UPS_off" ) / 0.6 ) );
         if( p && p->has_active_bionic( bionic_id( "bio_ups" ) ) ) {
-            qty = sum_no_wrap( qty, long( p->power_level ) );
+            qty = sum_no_wrap( qty, static_cast<long>( p->power_level ) );
         }
         return std::min( qty, limit );
     }
@@ -882,7 +893,7 @@ int visitable<inventory>::amount_of( const std::string &what, bool pseudo, int l
 
     int res = 0;
     if( what == "any" ) {
-        for( const auto kv : binned ) {
+        for( const auto &kv : binned ) {
             for( const item *it : kv.second ) {
                 res = sum_no_wrap( res, it->amount_of( what, pseudo, limit, filter ) );
             }

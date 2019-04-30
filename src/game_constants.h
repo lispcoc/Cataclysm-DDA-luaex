@@ -1,12 +1,10 @@
+#include "calendar.h"
+
 #pragma once
 #ifndef GAME_CONSTANTS_H
 #define GAME_CONSTANTS_H
 
 #include "units.h"
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 // Fixed window sizes
 #define HP_HEIGHT 14
@@ -71,7 +69,7 @@
 #define MAX_HANDLING_COST 400
 /** Move cost of accessing an item in inventory. */
 #define INVENTORY_HANDLING_PENALTY 100
-/** Move cost of accessing an item lying on the map. @todo: Less if player is crouching */
+/** Move cost of accessing an item lying on the map. TODO: Less if player is crouching */
 #define MAP_HANDLING_PENALTY 80
 /** Move cost of accessing an item lying on a vehicle. */
 #define VEHICLE_HANDLING_PENALTY 80
@@ -100,6 +98,9 @@ constexpr int freezer = 23; // -5 Celsius
 /** Temperature in which water freezes in Fahrenheit  */
 constexpr int freezing = 32; // 0 Celsius
 }
+
+// Shelf life of corpse. This should be kept same as raw flesh.
+constexpr time_duration CORPSE_ROT_TIME = 24_hours;
 
 /** Weight per level of LIFT/JACK tool quality */
 #define TOOL_LIFT_FACTOR 500_kilogram // 500kg/level
@@ -148,5 +149,9 @@ constexpr double accuracy_grazing  = 1.0;
 
 /** Character's base weight in units::mass */
 constexpr units::mass CHARACTER_WEIGHT = 81500_gram;
+
+/** Used to limit the random seed during noise calculation. A large value flattens the noise generator to zero.
+    Windows has a rand limit of 32768, other operating systems can have higher limits. */
+constexpr int SIMPLEX_NOISE_RANDOM_SEED_LIMIT = 32768;
 
 #endif

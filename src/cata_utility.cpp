@@ -1,21 +1,26 @@
 #include "cata_utility.h"
 
+#include <ctype.h>
+#include <stdio.h>
 #include <algorithm>
 #include <cmath>
-#include <locale>
 #include <string>
+#include <exception>
+#include <iterator>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
 
 #include "debug.h"
-#include "enums.h"
 #include "filesystem.h"
 #include "json.h"
 #include "mapsharing.h"
-#include "material.h"
 #include "options.h"
 #include "output.h"
 #include "rng.h"
 #include "translations.h"
 #include "units.h"
+#include "catacharset.h"
 
 static double pow10( unsigned int n )
 {
@@ -195,7 +200,7 @@ double convert_velocity( int velocity, const units_type vel_units )
 {
     const std::string type = get_option<std::string>( "USE_METRIC_SPEEDS" );
     // internal units to mph conversion
-    double ret = double( velocity ) / 100;
+    double ret = static_cast<double>( velocity ) / 100;
 
     if( type == "km/h" ) {
         switch( vel_units ) {
@@ -260,6 +265,11 @@ double temp_to_celsius( double fahrenheit )
 double temp_to_kelvin( double fahrenheit )
 {
     return temp_to_celsius( fahrenheit ) + 273.15;
+}
+
+double kelvin_to_fahrenheit( double kelvin )
+{
+    return 1.8 * ( kelvin - 273.15 ) + 32;
 }
 
 double clamp_to_width( double value, int width, int &scale )

@@ -1,8 +1,13 @@
 #include "character.h"
 
+#include <limits.h>
+#include <stdlib.h>
 #include <algorithm>
 #include <numeric>
 #include <sstream>
+#include <cmath>
+#include <iterator>
+#include <memory>
 
 #include "activity_handlers.h"
 #include "bionics.h"
@@ -31,6 +36,13 @@
 #include "veh_interact.h"
 #include "vehicle.h"
 #include "vehicle_selector.h"
+#include "catacharset.h"
+#include "game_constants.h"
+#include "item_location.h"
+#include "lightmap.h"
+#include "rng.h"
+#include "stomach.h"
+#include "ui.h"
 
 const efftype_id effect_bandaged( "bandaged" );
 const efftype_id effect_beartrap( "beartrap" );
@@ -57,23 +69,15 @@ const skill_id skill_dodge( "dodge" );
 const skill_id skill_throw( "throw" );
 
 static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
-static const trait_id trait_ARACHNID_ARMS( "ARACHNID_ARMS" );
-static const trait_id trait_ARM_TENTACLES_4( "ARM_TENTACLES_4" );
-static const trait_id trait_ARM_TENTACLES_8( "ARM_TENTACLES_8" );
-static const trait_id trait_ARM_TENTACLES( "ARM_TENTACLES" );
 static const trait_id trait_BIRD_EYE( "BIRD_EYE" );
 static const trait_id trait_CEPH_EYES( "CEPH_EYES" );
 static const trait_id trait_CEPH_VISION( "CEPH_VISION" );
-static const trait_id trait_CHITIN2( "CHITIN2" );
-static const trait_id trait_CHITIN3( "CHITIN3" );
-static const trait_id trait_CHITIN_FUR3( "CHITIN_FUR3" );
 static const trait_id trait_DEBUG_NIGHTVISION( "DEBUG_NIGHTVISION" );
 static const trait_id trait_DISORGANIZED( "DISORGANIZED" );
 static const trait_id trait_ELFA_FNV( "ELFA_FNV" );
 static const trait_id trait_ELFA_NV( "ELFA_NV" );
 static const trait_id trait_FEL_NV( "FEL_NV" );
 static const trait_id trait_GLASSJAW( "GLASSJAW" );
-static const trait_id trait_INSECT_ARMS( "INSECT_ARMS" );
 static const trait_id trait_MEMBRANE( "MEMBRANE" );
 static const trait_id trait_MYOPIC( "MYOPIC" );
 static const trait_id trait_NIGHTVISION2( "NIGHTVISION2" );
@@ -85,13 +89,11 @@ static const trait_id trait_PER_SLIME( "PER_SLIME" );
 static const trait_id trait_SEESLEEP( "SEESLEEP" );
 static const trait_id trait_SHELL2( "SHELL2" );
 static const trait_id trait_SHELL( "SHELL" );
-static const trait_id trait_THICK_SCALES( "THICK_SCALES" );
 static const trait_id trait_THRESH_CEPHALOPOD( "THRESH_CEPHALOPOD" );
 static const trait_id trait_THRESH_INSECT( "THRESH_INSECT" );
 static const trait_id trait_THRESH_PLANT( "THRESH_PLANT" );
 static const trait_id trait_THRESH_SPIDER( "THRESH_SPIDER" );
 static const trait_id trait_URSINE_EYE( "URSINE_EYE" );
-static const trait_id trait_WEBBED( "WEBBED" );
 static const trait_id debug_nodmg( "DEBUG_NODMG" );
 
 // *INDENT-OFF*
@@ -118,12 +120,12 @@ Character::Character() :
     healthy = 0;
     healthy_mod = 0;
     hunger = 0;
-    starvation = 0;
     thirst = 0;
     fatigue = 0;
     sleep_deprivation = 0;
-    stomach_food = 0;
-    stomach_water = 0;
+    // 45 days to starve to death
+    healthy_calories = 77000;
+    stored_calories = healthy_calories;
 
     name.clear();
 
@@ -181,8 +183,6 @@ void Character::mod_stat( const std::string &stat, float modifier )
         mod_healthy( modifier );
     } else if( stat == "hunger" ) {
         mod_hunger( modifier );
-    } else if( stat == "starvation" ) {
-        mod_starvation( modifier );
     } else {
         Creature::mod_stat( stat, modifier );
     }
@@ -722,7 +722,7 @@ long int Character::i_add_to_container( const item &it, const bool unloading )
         auto &contained_ammo = container.contents.front();
         if( contained_ammo.charges < container.ammo_capacity() ) {
             const long int diff = container.ammo_capacity() - contained_ammo.charges;
-            add_msg( _( "You put the %s in your %s." ), it.tname().c_str(), container.tname().c_str() );
+            add_msg( _( "You put the %s in your %s." ), it.tname(), container.tname() );
             if( diff > charges ) {
                 contained_ammo.charges += charges;
                 return 0L;
@@ -756,9 +756,9 @@ item &Character::i_add( item it, bool should_stack )
 
     // if there's a desired invlet for this item type, try to use it
     bool keep_invlet = false;
-    const std::set<char> cur_inv = allocated_invlets();
+    const invlets_bitset cur_inv = allocated_invlets();
     for( auto iter : inv.assigned_invlet ) {
-        if( iter.second == item_type_id && !cur_inv.count( iter.first ) ) {
+        if( iter.second == item_type_id && !cur_inv[iter.first] ) {
             it.invlet = iter.first;
             keep_invlet = true;
             break;
@@ -792,7 +792,7 @@ const item &Character::i_at( int position ) const
     }
     if( position < -1 ) {
         int worn_index = worn_position_to_index( position );
-        if( size_t( worn_index ) < worn.size() ) {
+        if( static_cast<size_t>( worn_index ) < worn.size() ) {
             auto iter = worn.begin();
             std::advance( iter, worn_index );
             return *iter;
@@ -848,7 +848,7 @@ item Character::i_rem( const item *it )
         return &i == it;
     }, 1 );
     if( tmp.empty() ) {
-        debugmsg( "did not found item %s to remove it!", it->tname().c_str() );
+        debugmsg( "did not found item %s to remove it!", it->tname() );
         return item();
     }
     return tmp.front();
@@ -879,18 +879,16 @@ bool Character::i_add_or_drop( item &it, int qty )
     return retval;
 }
 
-std::set<char> Character::allocated_invlets() const
+invlets_bitset Character::allocated_invlets() const
 {
-    std::set<char> invlets = inv.allocated_invlets();
+    invlets_bitset invlets = inv.allocated_invlets();
 
-    if( weapon.invlet != 0 ) {
-        invlets.insert( weapon.invlet );
-    }
+    invlets.set( weapon.invlet );
     for( const auto &w : worn ) {
-        if( w.invlet != 0 ) {
-            invlets.insert( w.invlet );
-        }
+        invlets.set( w.invlet );
     }
+
+    invlets[0] = false;
 
     return invlets;
 }
@@ -1022,6 +1020,31 @@ std::vector<item_location> Character::find_ammo( const item &obj, bool empty, in
     return res;
 }
 
+std::vector<item_location> Character::find_reloadables()
+{
+    std::vector<item_location> reloadables;
+
+    visit_items( [this, &reloadables]( item * node ) {
+        if( node->is_holster() ) {
+            return VisitResponse::NEXT;
+        }
+        bool reloadable = false;
+        if( node->is_gun() && !node->magazine_compatible().empty() ) {
+            reloadable = node->magazine_current() == nullptr ||
+                         node->ammo_remaining() < node->ammo_capacity();
+        } else {
+            reloadable = ( node->is_magazine() || node->is_bandolier() ||
+                           ( node->is_gun() && node->magazine_integral() ) ) &&
+                         node->ammo_remaining() < node->ammo_capacity();
+        }
+        if( reloadable ) {
+            reloadables.push_back( item_location( *this, node ) );
+        }
+        return VisitResponse::SKIP;
+    } );
+    return reloadables;
+}
+
 units::mass Character::weight_carried() const
 {
     return weight_carried_with_tweaks( {} );
@@ -1032,6 +1055,20 @@ units::volume Character::volume_carried() const
     return inv.volume();
 }
 
+int Character::best_nearby_lifting_assist() const
+{
+    return best_nearby_lifting_assist( this->pos() );
+}
+
+int Character::best_nearby_lifting_assist( const tripoint &world_pos ) const
+{
+    const quality_id LIFT( "LIFT" );
+    return std::max( { this->max_quality( LIFT ),
+                       map_selector( this->pos(), PICKUP_RANGE ).max_quality( LIFT ),
+                       vehicle_selector( world_pos, 4, true, true ).max_quality( LIFT )
+                     } );
+}
+
 units::mass Character::weight_carried_with_tweaks( const item_tweaks &tweaks ) const
 {
     const std::map<const item *, int> empty;
@@ -1039,7 +1076,13 @@ units::mass Character::weight_carried_with_tweaks( const item_tweaks &tweaks ) c
 
     units::mass ret = 0_gram;
     if( !without.count( &weapon ) ) {
-        ret += weapon.weight();
+
+        const auto thisweight = weapon.weight();
+        const auto liftrequirement = ceil( units::to_gram<float>( thisweight ) / units::to_gram<float>
+                                           ( TOOL_LIFT_FACTOR ) );
+        if( g->new_game || best_nearby_lifting_assist() < liftrequirement ) {
+            ret += thisweight;
+        }
     }
     for( auto &i : worn ) {
         if( !without.count( &i ) ) {
@@ -1147,12 +1190,12 @@ bool Character::can_use( const item &it, const item &context ) const
             //~ %1$s - list of unmet requirements, %2$s - item name.
             add_msg_player_or_npc( m_bad, _( "You need at least %1$s to use this %2$s." ),
                                    _( "<npcname> needs at least %1$s to use this %2$s." ),
-                                   unmet.c_str(), it.tname().c_str() );
+                                   unmet, it.tname() );
         } else {
             //~ %1$s - list of unmet requirements, %2$s - item name, %3$s - indirect item name.
             add_msg_player_or_npc( m_bad, _( "You need at least %1$s to use this %2$s with your %3$s." ),
                                    _( "<npcname> needs at least %1$s to use this %2$s with their %3$s." ),
-                                   unmet.c_str(), it.tname().c_str(), ctx.tname().c_str() );
+                                   unmet, it.tname(), ctx.tname() );
         }
 
         return false;
@@ -1266,7 +1309,7 @@ std::string Character::enumerate_unmet_requirements( const item &it, const item 
 
     const auto check_req = [ &unmet_reqs ]( const std::string & name, int cur, int req ) {
         if( cur < req ) {
-            unmet_reqs.push_back( string_format( "%s %d", name.c_str(), req ) );
+            unmet_reqs.push_back( string_format( "%s %d", name, req ) );
         }
     };
 
@@ -1669,6 +1712,9 @@ void Character::mut_cbm_encumb( std::array<encumbrance_data, num_bp> &vals ) con
     if( has_bionic( bionic_id( "bio_nostril" ) ) ) {
         vals[bp_mouth].encumbrance += 10;
     }
+    if( has_bionic( bionic_id( "bio_shotgun" ) ) ) {
+        vals[bp_arm_l].encumbrance += 5;
+    }
     if( has_bionic( bionic_id( "bio_thumbs" ) ) ) {
         vals[bp_hand_l].encumbrance += 10;
         vals[bp_hand_r].encumbrance += 10;
@@ -1875,6 +1921,42 @@ void Character::mod_healthy_mod( int nhealthy_mod, int cap )
     healthy_mod = std::max( healthy_mod, low_cap );
 }
 
+int Character::get_stored_kcal() const
+{
+    return stored_calories;
+}
+
+void Character::mod_stored_kcal( int nkcal )
+{
+    // this needs to be capped until there are negative effects on being overweight
+    const int capped = std::min( stored_calories + nkcal,
+                                 static_cast<int>( get_healthy_kcal() * 1.1 ) );
+    set_stored_kcal( capped );
+}
+
+void Character::mod_stored_nutr( int nnutr )
+{
+    // nutr is legacy type code, this function simply converts old nutrition to new kcal
+    mod_stored_kcal( -1 * round( nnutr * 2500.0f / ( 12 * 24 ) ) );
+}
+
+void Character::set_stored_kcal( int kcal )
+{
+    if( stored_calories != kcal ) {
+        stored_calories = kcal;
+    }
+}
+
+int Character::get_healthy_kcal() const
+{
+    return healthy_calories;
+}
+
+float Character::get_kcal_percent() const
+{
+    return static_cast<float>( get_stored_kcal() ) / static_cast<float>( get_healthy_kcal() );
+}
+
 int Character::get_hunger() const
 {
     return hunger;
@@ -1894,22 +1976,19 @@ void Character::set_hunger( int nhunger )
     }
 }
 
+// this is a translation from a legacy value
 int Character::get_starvation() const
 {
-    return starvation;
-}
-
-void Character::mod_starvation( int nstarvation )
-{
-    set_starvation( starvation + nstarvation );
-}
-
-void Character::set_starvation( int nstarvation )
-{
-    if( starvation != nstarvation ) {
-        starvation = std::max( 0, nstarvation );
-        on_stat_change( "starvation", starvation );
+    static const std::vector<std::pair<float, float>> starv_thresholds = { {
+            std::make_pair( 0.0f, 6000.0f ),
+            std::make_pair( 0.8f, 300.0f ),
+            std::make_pair( 0.95f, 100.0f )
+        }
+    };
+    if( get_kcal_percent() < 0.95f ) {
+        return round( multi_lerp( starv_thresholds, get_kcal_percent() ) );
     }
+    return 0;
 }
 
 int Character::get_thirst() const
@@ -1919,7 +1998,9 @@ int Character::get_thirst() const
 
 std::pair<std::string, nc_color> Character::get_thirst_description() const
 {
-    int thirst = get_thirst();
+    // some delay from water in stomach is desired, but there needs to be some visceral response
+    int thirst = get_thirst() - ( std::max( units::to_milliliter<int>( g->u.stomach.get_water() ) / 10,
+                                            0 ) );
     std::string hydration_string;
     nc_color hydration_color = c_white;
     if( thirst > 520 ) {
@@ -2009,31 +2090,6 @@ void Character::set_thirst( int nthirst )
         thirst = nthirst;
         on_stat_change( "thirst", thirst );
     }
-}
-
-int Character::get_stomach_food() const
-{
-    return stomach_food;
-}
-void Character::mod_stomach_food( int n_stomach_food )
-{
-    stomach_food = std::max( 0, stomach_food + n_stomach_food );
-}
-void Character::set_stomach_food( int n_stomach_food )
-{
-    stomach_food = std::max( 0, n_stomach_food );
-}
-int Character::get_stomach_water() const
-{
-    return stomach_water;
-}
-void Character::mod_stomach_water( int n_stomach_water )
-{
-    stomach_water = std::max( 0, stomach_water + n_stomach_water );
-}
-void Character::set_stomach_water( int n_stomach_water )
-{
-    stomach_water = std::max( 0, n_stomach_water );
 }
 
 void Character::mod_fatigue( int nfatigue )
@@ -2257,7 +2313,7 @@ hp_part Character::body_window( const std::string &menu_header,
                                              get_effect( effect_bleed, e.bp ).disp_short_desc() ), c_red ) << "\n";
             if( bleed > 0.0f ) {
                 desc << colorize( string_format( _( "Chance to stop: %d %%" ),
-                                                 int( bleed * 100 ) ), c_light_green ) << "\n";
+                                                 static_cast<int>( bleed * 100 ) ), c_light_green ) << "\n";
             } else {
                 desc << colorize( _( "This will not stop the bleeding." ),
                                   c_yellow ) << "\n";
@@ -2284,7 +2340,7 @@ hp_part Character::body_window( const std::string &menu_header,
                               c_red ) << "\n";
             if( bite > 0 ) {
                 desc << colorize( string_format( _( "Chance to clean and disinfect: %d %%" ),
-                                                 int( bite * 100 ) ), c_light_green ) << "\n";
+                                                 static_cast<int>( bite * 100 ) ), c_light_green ) << "\n";
             } else {
                 desc << colorize( _( "This will not help in cleaning this wound." ), c_yellow ) << "\n";
             }
@@ -2298,7 +2354,7 @@ hp_part Character::body_window( const std::string &menu_header,
                               c_red ) << "\n";
             if( infect > 0 ) {
                 desc << colorize( string_format( _( "Chance to heal infection: %d %%" ),
-                                                 int( infect * 100 ) ), c_light_green ) << "\n";
+                                                 static_cast<int>( infect * 100 ) ), c_light_green ) << "\n";
             } else {
                 desc << colorize( _( "This will not help in healing infection." ), c_yellow ) << "\n";
             }
@@ -2510,12 +2566,13 @@ int Character::throw_range( const item &it ) const
     }
 
     /** @EFFECT_STR determines maximum weight that can be thrown */
-    if( ( tmp.weight() / 113_gram ) > int( str_cur * 15 ) ) {
+    if( ( tmp.weight() / 113_gram ) > static_cast<int>( str_cur * 15 ) ) {
         return 0;
     }
     // Increases as weight decreases until 150 g, then decreases again
     /** @EFFECT_STR increases throwing range, vs item weight (high or low) */
-    int ret = ( str_cur * 10 ) / ( tmp.weight() >= 150_gram ? tmp.weight() / 113_gram : 10 - int(
+    int ret = ( str_cur * 10 ) / ( tmp.weight() >= 150_gram ? tmp.weight() / 113_gram : 10 -
+                                   static_cast<int>(
                                        tmp.weight() / 15_gram ) );
     ret -= tmp.volume() / 1000_ml;
     static const std::set<material_id> affected_materials = { material_id( "iron" ), material_id( "steel" ) };
@@ -2563,12 +2620,11 @@ bool Character::pour_into( item &container, item &liquid )
     const long amount = container.get_remaining_capacity_for_liquid( liquid, *this, &err );
 
     if( !err.empty() ) {
-        add_msg_if_player( m_bad, err.c_str() );
+        add_msg_if_player( m_bad, err );
         return false;
     }
 
-    add_msg_if_player( _( "You pour %1$s into the %2$s." ), liquid.tname().c_str(),
-                       container.tname().c_str() );
+    add_msg_if_player( _( "You pour %1$s into the %2$s." ), liquid.tname(), container.tname() );
 
     container.fill_with( liquid, amount );
     inv.unsort();
@@ -2588,9 +2644,9 @@ bool Character::pour_into( vehicle &veh, item &liquid )
 
     auto stack = units::legacy_volume_factor / liquid.type->stack_size;
     auto title = string_format( _( "Select target tank for <color_%s>%.1fL %s</color>" ),
-                                get_all_colors().get_name( liquid.color() ).c_str(),
+                                get_all_colors().get_name( liquid.color() ),
                                 round_up( to_liter( liquid.charges * stack ), 1 ),
-                                liquid.tname().c_str() );
+                                liquid.tname() );
 
     auto &tank = veh_interact::select_part( veh, sel, title );
     if( !tank ) {
@@ -2601,7 +2657,7 @@ bool Character::pour_into( vehicle &veh, item &liquid )
 
     //~ $1 - vehicle name, $2 - part name, $3 - liquid type
     add_msg_if_player( _( "You refill the %1$s's %2$s with %3$s." ),
-                       veh.name.c_str(), tank.name().c_str(), liquid.type_name().c_str() );
+                       veh.name, tank.name(), liquid.type_name() );
 
     if( liquid.charges > 0 ) {
         add_msg_if_player( _( "There's some left over!" ) );
@@ -2673,7 +2729,7 @@ long Character::ammo_count_for( const item &gun )
 float Character::rest_quality() const
 {
     // Just a placeholder for now.
-    // @todo: Waiting/reading/being unconscious on bed/sofa/grass
+    // TODO: Waiting/reading/being unconscious on bed/sofa/grass
     return has_effect( effect_sleep ) ? 1.0f : 0.0f;
 }
 
@@ -2731,7 +2787,7 @@ body_part Character::get_random_body_part( bool main ) const
 
 std::vector<body_part> Character::get_all_body_parts( bool only_main ) const
 {
-    // @todo: Remove broken parts, parts removed by mutations etc.
+    // TODO: Remove broken parts, parts removed by mutations etc.
     static const std::vector<body_part> all_bps = {{
             bp_head,
             bp_eyes,
@@ -2766,9 +2822,9 @@ std::string Character::extended_description() const
     std::ostringstream ss;
     if( is_player() ) {
         // <bad>This is me, <player_name>.</bad>
-        ss << string_format( _( "This is you - %s." ), name.c_str() );
+        ss << string_format( _( "This is you - %s." ), name );
     } else {
-        ss << string_format( _( "This is %s." ), name.c_str() );
+        ss << string_format( _( "This is %s." ), name );
     }
 
     ss << std::endl << "--" << std::endl;
@@ -2798,7 +2854,7 @@ std::string Character::extended_description() const
         ss << std::string( longest - bp_heading.size() + 1, ' ' );
         ss << colorize( hp_bar.first, hp_bar.second );
         // Trailing bars. UGLY!
-        // @todo: Integrate into get_hp_bar somehow
+        // TODO: Integrate into get_hp_bar somehow
         ss << colorize( std::string( 5 - hp_bar.first.size(), '.' ), c_white );
         ss << std::endl;
     }
@@ -2867,7 +2923,7 @@ float calc_mutation_value_multiplicative( const std::vector<const mutation_branc
 float Character::mutation_value( const std::string &val ) const
 {
     // Syntax similar to tuple get<n>()
-    // @todo: Get rid of if/else ladder
+    // TODO: Get rid of if/else ladder
     if( val == "healing_awake" ) {
         return calc_mutation_value<&mutation_branch::healing_awake>( cached_mutations );
     } else if( val == "healing_resting" ) {
@@ -2917,15 +2973,19 @@ float Character::mutation_value( const std::string &val ) const
         return calc_mutation_value_multiplicative<&mutation_branch::hearing_modifier>( cached_mutations );
     } else if( val == "noise_modifier" ) {
         return calc_mutation_value_multiplicative<&mutation_branch::noise_modifier>( cached_mutations );
+    } else if( val == "overmap_sight" ) {
+        return calc_mutation_value_multiplicative<&mutation_branch::overmap_sight>( cached_mutations );
+    } else if( val == "overmap_multiplier" ) {
+        return calc_mutation_value_multiplicative<&mutation_branch::overmap_multiplier>( cached_mutations );
     }
 
-    debugmsg( "Invalid mutation value name %s", val.c_str() );
+    debugmsg( "Invalid mutation value name %s", val );
     return 0.0f;
 }
 
 float Character::healing_rate( float at_rest_quality ) const
 {
-    // @todo: Cache
+    // TODO: Cache
     float heal_rate;
     if( !is_npc() ) {
         heal_rate = get_option< float >( "PLAYER_HEALING_RATE" );
@@ -2951,7 +3011,7 @@ float Character::healing_rate( float at_rest_quality ) const
     // Most common case: awake player with no regenerative abilities
     // ~7e-5 is 1 hp per day, anything less than that is totally negligible
     static constexpr float eps = 0.000007f;
-    add_msg( m_debug, "%s healing: %.6f", name.c_str(), final_rate );
+    add_msg( m_debug, "%s healing: %.6f", name, final_rate );
     if( std::abs( final_rate ) < eps ) {
         return 0.0f;
     }

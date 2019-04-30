@@ -9,8 +9,20 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <iosfwd>
+#include <set>
+#include <utility>
 
 #include "itype.h"
+#include "item.h"
+#include "item_category.h"
+#include "item_group.h"
+#include "iuse.h"
+
+namespace cata
+{
+template <typename T> class optional;
+}  // namespace cata
 
 bool item_is_blacklisted( const std::string &id );
 
@@ -18,10 +30,6 @@ typedef std::string Item_tag;
 typedef std::string Group_tag;
 typedef std::vector<item> Item_list;
 
-class Item_spawn_data;
-class Item_group;
-class item;
-class item_category;
 class Item_factory;
 class JsonObject;
 class JsonArray;
@@ -126,7 +134,7 @@ class Item_factory
          * group.
          * @return false if the group doesn't exist.
          */
-        bool add_item_to_group( const Group_tag group_id, const Item_tag item_id, int weight );
+        bool add_item_to_group( const Group_tag &group_id, const Item_tag &item_id, int weight );
         /*@}*/
 
         /**
@@ -141,6 +149,7 @@ class Item_factory
         void load_ammo( JsonObject &jo, const std::string &src );
         void load_gun( JsonObject &jo, const std::string &src );
         void load_armor( JsonObject &jo, const std::string &src );
+        void load_pet_armor( JsonObject &jo, const std::string &src );
         void load_tool( JsonObject &jo, const std::string &src );
         void load_toolmod( JsonObject &jo, const std::string &src );
         void load_tool_armor( JsonObject &jo, const std::string &src );
@@ -281,6 +290,7 @@ class Item_factory
         void load( islot_comestible &slot, JsonObject &jo, const std::string &src );
         void load( islot_brewable &slot, JsonObject &jo, const std::string &src );
         void load( islot_armor &slot, JsonObject &jo, const std::string &src );
+        void load( islot_pet_armor &slot, JsonObject &jo, const std::string &src );
         void load( islot_book &slot, JsonObject &jo, const std::string &src );
         void load( islot_mod &slot, JsonObject &jo, const std::string &src );
         void load( islot_engine &slot, JsonObject &jo, const std::string &src );

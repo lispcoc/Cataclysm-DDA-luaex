@@ -6,24 +6,17 @@
 #include <string>
 #include <vector>
 
-#include "game.h"
-#include "map.h"
-#include "npc.h"
-#include "output.h"
+#include "calendar.h"
+#include "itype.h"
 
-class martialart;
-class JsonObject;
-class mission;
-class time_point;
-class time_duration;
 class npc;
 class item;
 struct tripoint;
 struct comp_rank;
-class player;
 class npc_template;
 template<typename T>
 class string_id;
+class monster;
 
 using npc_ptr = std::shared_ptr<npc>;
 using comp_list = std::vector<npc_ptr>;
@@ -98,10 +91,6 @@ npc_ptr individual_mission( const tripoint &omt_pos, const std::string &role_id,
                             const std::string &desc, const std::string &miss_id,
                             bool group = false, const std::vector<item *> &equipment = {},
                             const std::string &skill_tested = "", int skill_level = 0 );
-///Display items listed in @ref equipment to let the player pick what to give the departing NPC, loops until quit or empty.
-std::vector<item *> individual_mission_give_equipment( std::vector<item *> equipment,
-        const std::string &message = _( "Do you wish to give your companion additional items?" ) );
-
 
 ///All of these missions are associated with the ranch camp and need to me updated/merged into the new ones
 void caravan_return( npc &p, const std::string &dest, const std::string &id );

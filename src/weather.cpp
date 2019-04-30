@@ -4,6 +4,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <array>
+#include <list>
+#include <memory>
 
 #include "calendar.h"
 #include "cata_utility.h"
@@ -14,7 +18,6 @@
 #include "map.h"
 #include "messages.h"
 #include "options.h"
-#include "output.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "player.h"
@@ -23,6 +26,17 @@
 #include "translations.h"
 #include "trap.h"
 #include "weather_gen.h"
+#include "bodypart.h"
+#include "enums.h"
+#include "item.h"
+#include "itype.h"
+#include "mapdata.h"
+#include "math_defines.h"
+#include "pldata.h"
+#include "rng.h"
+#include "string_id.h"
+#include "units.h"
+#include "mtype.h"
 
 const efftype_id effect_glare( "glare" );
 const efftype_id effect_snow_glare( "snow_glare" );
@@ -31,8 +45,6 @@ const efftype_id effect_sleep( "sleep" );
 
 static const trait_id trait_CEPH_VISION( "CEPH_VISION" );
 static const trait_id trait_FEATHERS( "FEATHERS" );
-static const trait_id trait_GOODHEARING( "GOODHEARING" );
-static const trait_id trait_BADHEARING( "BADHEARING" );
 
 /**
  * \defgroup Weather "Weather and its implications."
@@ -56,7 +68,7 @@ void weather_effect::glare( bool snowglare )
 {
     season_type season = season_of_year( calendar::turn );
     if( is_player_outside() && g->is_in_sunlight( g->u.pos() ) && !g->u.in_sleep_state() &&
-        !g->u.worn_with_flag( "SUN_GLASSES" ) && !g->u.is_blind() && snowglare == false &&
+        !g->u.worn_with_flag( "SUN_GLASSES" ) && !g->u.is_blind() && !snowglare &&
         !g->u.has_bionic( bionic_id( "bio_sunglasses" ) ) ) {
         if( !g->u.has_effect( effect_glare ) ) {
             if( g->u.has_trait( trait_CEPH_VISION ) ) {
@@ -73,7 +85,7 @@ void weather_effect::glare( bool snowglare )
         }
     }
     if( is_player_outside() && !g->u.in_sleep_state() && season == WINTER &&
-        !g->u.worn_with_flag( "SUN_GLASSES" ) && !g->u.is_blind() && snowglare == true &&
+        !g->u.worn_with_flag( "SUN_GLASSES" ) && !g->u.is_blind() && snowglare &&
         !g->u.has_bionic( bionic_id( "bio_sunglasses" ) ) ) {
         if( !g->u.has_effect( effect_snow_glare ) ) {
             if( g->u.has_trait( trait_CEPH_VISION ) ) {
@@ -91,35 +103,6 @@ void weather_effect::glare( bool snowglare )
     }
 }
 
-////// food vs weather
-
-time_duration get_rot_since( const time_point &start, const time_point &end,
-                             const tripoint &pos )
-{
-    time_duration ret = 0_turns;
-    const auto &wgen = g->get_cur_weather_gen();
-    /* Hoisting loop invariants */
-    const auto location_temp = g->get_temperature( pos );
-    const auto local = g->m.getlocal( pos );
-    const auto local_mod = g->new_game ? 0 : g->m.temperature( local );
-    const auto seed = g->get_seed();
-
-    const auto temp_modify = ( !g->new_game ) && ( g->m.ter( local ) == t_rootcellar );
-
-    for( time_point i = start; i < end; i += 1_hours ) {
-        w_point w = wgen.get_weather( pos, i, seed );
-
-        //Use weather if above ground, use map temp if below
-        double temperature = ( pos.z >= 0 ? w.temperature : location_temp ) + local_mod;
-        // If in a root celler: use AVERAGE_ANNUAL_TEMPERATURE
-        // If not: use calculated temperature
-        temperature = ( temp_modify * AVERAGE_ANNUAL_TEMPERATURE ) + ( !temp_modify * temperature );
-
-        ret += std::min( 1_hours, end - i ) / 1_hours * get_hourly_rotpoints_at_temp(
-                   temperature ) * 1_turns;
-    }
-    return ret;
-}
 
 inline void proc_weather_sum( const weather_type wtype, weather_sum &data,
                               const time_point &t, const time_duration &tick_size )
@@ -222,7 +205,7 @@ void item::add_rain_to_container( bool acid, int charges )
     if( contents.empty() ) {
         // This is easy. Just add 1 charge of the rain liquid to the container.
         if( !acid ) {
-            // Funnels aren't always clean enough for water. // @todo: disinfectant squeegie->funnel
+            // Funnels aren't always clean enough for water. // TODO: disinfectant squeegie->funnel
             ret.poison = one_in( 10 ) ? 1 : 0;
         }
         ret.charges = std::min<long>( charges, capa );
@@ -325,7 +308,7 @@ void fill_funnels( int rain_depth_mm_per_hour, bool acid, const trap &tr )
     const auto &funnel_locs = g->m.trap_locations( tr.loadid );
     for( auto loc : funnel_locs ) {
         units::volume maxcontains = 0_ml;
-        if( one_in( turns_per_charge ) ) { // @todo: fixme
+        if( one_in( turns_per_charge ) ) { // FIXME:
             //add_msg("%d mm/h %d tps %.4f: fill",int(calendar::turn),rain_depth_mm_per_hour,turns_per_charge);
             // This funnel has collected some rain! Put the rain in the largest
             // container here which is either empty or contains some mixture of
@@ -463,12 +446,11 @@ void weather_effect::thunder()
         if( g->get_levz() >= 0 ) {
             add_msg( _( "You hear a distant rumble of thunder." ) );
             sfx::play_variant_sound( "environment", "thunder_far", 80, rng( 0, 359 ) );
-        } else if( g->u.has_trait( trait_GOODHEARING ) && one_in( 1 - 2 * g->get_levz() ) ) {
+        } else if( one_in( std::max( roll_remainder( 2.0f * g->get_levz() /
+                                     g->u.mutation_value( "hearing_modifier" ) ), 1 ) ) ) {
             add_msg( _( "You hear a rumble of thunder from above." ) );
-            sfx::play_variant_sound( "environment", "thunder_far", 100, rng( 0, 359 ) );
-        } else if( !g->u.has_trait( trait_BADHEARING ) && one_in( 1 - 3 * g->get_levz() ) ) {
-            add_msg( _( "You hear a rumble of thunder from above." ) );
-            sfx::play_variant_sound( "environment", "thunder_far", 60, rng( 0, 359 ) );
+            sfx::play_variant_sound( "environment", "thunder_far",
+                                     ( 80 * g->u.mutation_value( "hearing_modifier" ) ), rng( 0, 359 ) );
         }
     }
 }
@@ -504,7 +486,7 @@ void weather_effect::light_acid()
     generic_wet( true );
     if( calendar::once_every( 1_minutes ) && is_player_outside() ) {
         if( g->u.weapon.has_flag( "RAIN_PROTECT" ) && !one_in( 3 ) ) {
-            add_msg( _( "Your %s protects you from the acidic drizzle." ), g->u.weapon.tname().c_str() );
+            add_msg( _( "Your %s protects you from the acidic drizzle." ), g->u.weapon.tname() );
         } else {
             if( g->u.worn_with_flag( "RAINPROOF" ) && !one_in( 4 ) ) {
                 add_msg( _( "Your clothing protects you from the acidic drizzle." ) );
@@ -562,7 +544,7 @@ static std::string to_string( const weekdays &d )
     };
     static_assert( static_cast<int>( weekdays::SUNDAY ) == 0,
                    "weekday_names array is out of sync with weekdays enumeration values" );
-    return _( weekday_names[ static_cast<int>( d ) ].c_str() );
+    return _( weekday_names[ static_cast<int>( d ) ] );
 }
 
 static std::string print_time_just_hour( const time_point &p )
@@ -612,8 +594,8 @@ std::string weather_forecast( const point &abs_sm_pos )
     weather_report << string_format(
                        _( "The current time is %s Eastern Standard Time.  At %s in %s, it was %s. The temperature was %s. " ),
                        to_string_time_of_day( calendar::turn ), print_time_just_hour( calendar::turn ),
-                       city_name.c_str(),
-                       weather_data( g->weather ).name.c_str(), print_temperature( g->temperature ).c_str()
+                       city_name,
+                       weather_data( g->weather ).name, print_temperature( g->temperature )
                    );
 
     //weather_report << ", the dewpoint ???, and the relative humidity ???.  ";
@@ -633,7 +615,7 @@ std::string weather_forecast( const point &abs_sm_pos )
     double high = -100.0;
     double low = 100.0;
     const tripoint abs_ms_pos = tripoint( sm_to_ms_copy( abs_sm_pos ), 0 );
-    // TODO wind direction and speed
+    // TODO: wind direction and speed
     const time_point last_hour = calendar::turn - ( calendar::turn - calendar::time_of_cataclysm ) %
                                  1_hours;
     for( int d = 0; d < 6; d++ ) {
@@ -662,8 +644,8 @@ std::string weather_forecast( const point &abs_sm_pos )
         }
         weather_report << string_format(
                            _( "%s... %s. Highs of %s. Lows of %s. " ),
-                           day.c_str(), weather_data( forecast ).name.c_str(),
-                           print_temperature( high ).c_str(), print_temperature( low ).c_str()
+                           day, weather_data( forecast ).name,
+                           print_temperature( high ), print_temperature( low )
                        );
     }
     return weather_report.str();
@@ -680,13 +662,13 @@ std::string print_temperature( double fahrenheit, int decimals )
 
     if( get_option<std::string>( "USE_CELSIUS" ) == "celsius" ) {
         ret << temp_to_celsius( fahrenheit );
-        return string_format( pgettext( "temperature in Celsius", "%sC" ), ret.str().c_str() );
+        return string_format( pgettext( "temperature in Celsius", "%sC" ), ret.str() );
     } else if( get_option<std::string>( "USE_CELSIUS" ) == "kelvin" ) {
         ret << temp_to_kelvin( fahrenheit );
-        return string_format( pgettext( "temperature in Kelvin", "%sK" ), ret.str().c_str() );
+        return string_format( pgettext( "temperature in Kelvin", "%sK" ), ret.str() );
     } else {
         ret << fahrenheit;
-        return string_format( pgettext( "temperature in Fahrenheit", "%sF" ), ret.str().c_str() );
+        return string_format( pgettext( "temperature in Fahrenheit", "%sF" ), ret.str() );
     }
 }
 
@@ -700,7 +682,7 @@ std::string print_humidity( double humidity, int decimals )
     ret << std::fixed;
 
     ret << humidity;
-    return string_format( pgettext( "humidity in percent", "%s%%" ), ret.str().c_str() );
+    return string_format( pgettext( "humidity in percent", "%s%%" ), ret.str() );
 }
 
 /**
@@ -713,7 +695,7 @@ std::string print_pressure( double pressure, int decimals )
     ret << std::fixed;
 
     ret << pressure / 10;
-    return string_format( pgettext( "air pressure in kPa", "%s kPa" ), ret.str().c_str() );
+    return string_format( pgettext( "air pressure in kPa", "%s kPa" ), ret.str() );
 }
 
 int get_local_windchill( double temperature, double humidity, double windpower )
@@ -753,7 +735,7 @@ std::string get_wind_strength_bars( double windpower )
 {
     std::string wind_bars;
     if( windpower < 3 ) {
-        wind_bars = "";
+        wind_bars.clear();
     } else if( windpower < 12 ) {
         wind_bars = "+";
     } else if( windpower < 24 ) {
@@ -852,7 +834,7 @@ std::string get_dirstring( int angle )
 
 std::string get_wind_arrow( int dirangle )
 {
-    std::string wind_arrow = "";
+    std::string wind_arrow;
     if( ( dirangle <= 23 && dirangle >= 0 ) || ( dirangle > 338 && dirangle < 360 ) ) {
         wind_arrow = "\u21D3";
     } else if( dirangle <= 68 && dirangle > 23 ) {
@@ -870,7 +852,7 @@ std::string get_wind_arrow( int dirangle )
     } else if( dirangle <= 338 && dirangle > 293 ) {
         wind_arrow = "\u21D9";
     } else {
-        wind_arrow = "";
+        wind_arrow.clear();
     }
     return wind_arrow;
 }
@@ -916,11 +898,7 @@ double get_local_windpower( double windpower, const oter_id &omter, const tripoi
 
 bool is_wind_blocker( const tripoint &location )
 {
-    if( g->m.has_flag( "BLOCK_WIND", location ) ) {
-        return true;
-    } else {
-        return false;
-    }
+    return g->m.has_flag( "BLOCK_WIND", location );
 }
 
 std::string get_wind_desc( double windpower )
@@ -960,10 +938,9 @@ std::string get_wind_desc( double windpower )
 rl_vec2d convert_wind_to_coord( const int angle )
 {
 
-    float fx, fy;
     rl_vec2d windvec;
-    fy = -cos( angle * M_PI / 180.0f );
-    fx = sin( angle * M_PI / 180.0f );
+    float fx = sin( angle * M_PI / 180.0f );
+    float fy = -cos( angle * M_PI / 180.0f );
     int roundedx;
     int roundedy;
     if( fx > 0.5 ) {

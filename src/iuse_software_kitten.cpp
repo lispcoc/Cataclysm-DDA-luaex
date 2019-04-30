@@ -1,6 +1,7 @@
 #include "iuse_software_kitten.h"
 
 #include <cstdlib>  // Needed for rand()
+#include <vector>
 
 #include "cursesdef.h"
 #include "input.h"
@@ -226,7 +227,7 @@ std::string robot_finds_kitten::getmessage( int idx )
 
 robot_finds_kitten::robot_finds_kitten( const catacurses::window &w )
 {
-#ifdef __ANDROID__
+#if defined(__ANDROID__)
     input_context ctxt( "IUSE_SOFTWARE_KITTEN" );
 #endif
 
@@ -328,7 +329,7 @@ robot_finds_kitten::robot_finds_kitten( const catacurses::window &w )
 
     wrefresh( w );
     /* Now the fun begins. */
-    int input = inp_mngr.get_input_event().get_first_input(); // @todo: use input context
+    int input = inp_mngr.get_input_event().get_first_input(); // TODO: use input context
 
     while( input != 'q' && input != 'Q' && input != KEY_ESCAPE ) {
         process_input( input, w );

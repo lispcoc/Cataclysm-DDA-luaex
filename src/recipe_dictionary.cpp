@@ -1,10 +1,11 @@
 #include "recipe_dictionary.h"
 
 #include <algorithm>
+#include <iterator>
+#include <memory>
+#include <utility>
 
 #include "cata_utility.h"
-#include "crafting.h"
-#include "generic_factory.h"
 #include "init.h"
 #include "item.h"
 #include "item_factory.h"
@@ -12,6 +13,12 @@
 #include "output.h"
 #include "skill.h"
 #include "uistate.h"
+#include "debug.h"
+#include "json.h"
+#include "optional.h"
+#include "player.h"
+#include "requirements.h"
+#include "units.h"
 
 recipe_dictionary recipe_dict;
 
@@ -365,7 +372,7 @@ void recipe_dictionary::finalize()
             bk.result_ = id;
             bk.reversible = true;
             bk.requirements_ = *requirement_id( "uncraft_book" ) * pages;
-            bk.time = pages * 10; // @todo: allow specifying time in requirement_data
+            bk.time = pages * 10; // TODO: allow specifying time in requirement_data
         }
     }
 

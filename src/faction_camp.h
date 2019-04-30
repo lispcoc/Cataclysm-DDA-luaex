@@ -4,25 +4,16 @@
 
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace catacurses
 {
 class window;
 } // namespace catacurses
-class martialart;
-class JsonObject;
-class mission;
-class time_point;
 class npc;
-class item;
 struct point;
 struct tripoint;
-struct comp_rank;
 struct mission_entry;
-class player;
-class npc_template;
-template<typename T>
-class string_id;
 
 enum camp_tab_mode {
     TAB_MAIN,
@@ -62,7 +53,7 @@ void recover_camp( npc & );
 void remove_overseer( npc & );
 
 void draw_camp_tabs( const catacurses::window &win, camp_tab_mode cur_tab,
-                     std::vector<std::vector<mission_entry>> &entries );
+                     const std::vector<std::vector<mission_entry>> &entries );
 std::string name_mission_tabs( const tripoint &omt_pos, const std::string &role_id,
                                const std::string &cur_title, camp_tab_mode cur_tab );
 

@@ -5,10 +5,14 @@
 #include <functional>
 #include <map>
 #include <vector>
+#include <algorithm>
+#include <array>
+#include <string>
 
 #include "bodypart.h"
 #include "calendar.h"
 #include "morale_types.h"
+#include "string_id.h"
 
 class item;
 class JsonIn;
@@ -17,8 +21,10 @@ class JsonObject;
 struct itype;
 struct morale_mult;
 class effect_type;
+
 using efftype_id = string_id<effect_type>;
 struct mutation_branch;
+
 using trait_id = string_id<mutation_branch>;
 
 class player_morale
@@ -135,7 +141,7 @@ class player_morale
         void update_stylish_bonus();
         void update_squeamish_penalty();
         void update_masochist_bonus();
-        void update_bodytemp_penalty( time_duration ticks );
+        void update_bodytemp_penalty( const time_duration &ticks );
         void update_constrained_penalty();
 
     private:

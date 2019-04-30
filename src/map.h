@@ -2,6 +2,8 @@
 #ifndef MAP_H
 #define MAP_H
 
+#include <stddef.h>
+#include <stdint.h>
 #include <array>
 #include <bitset>
 #include <list>
@@ -10,6 +12,9 @@
 #include <set>
 #include <utility>
 #include <vector>
+#include <functional>
+#include <string>
+#include <tuple>
 
 #include "calendar.h"
 #include "enums.h"
@@ -21,29 +26,21 @@
 #include "shadowcasting.h"
 #include "string_id.h"
 #include "units.h"
-
-//TODO: include comments about how these variables work. Where are they used. Are they constant etc.
-#define CAMPSIZE 1
-#define CAMPCHECK 3
+#include "cata_utility.h"
 
 namespace catacurses
 {
 class window;
 } // namespace catacurses
-namespace cata
-{
-template<typename T>
-class optional;
-} // namespace cata
 class emit;
+
 using emit_id = string_id<emit>;
-class vpart_position;
 class optional_vpart_position;
 class player;
 class monster;
-class item;
 class Creature;
 class tripoint_range;
+
 enum field_id : int;
 class field;
 class field_entry;
@@ -55,14 +52,11 @@ class map_cursor;
 struct maptile;
 class basecamp;
 class computer;
-struct itype;
-struct mapgendata;
-class map_cursor;
 class Character;
-class item_location;
 class zone_data;
 struct trap;
 struct oter_t;
+
 enum direction : unsigned;
 using itype_id = std::string;
 using trap_id = int_id<trap>;
@@ -72,17 +66,21 @@ class visitable;
 struct regional_settings;
 struct mongroup;
 struct ter_t;
+
 using ter_id = int_id<ter_t>;
 using ter_str_id = string_id<ter_t>;
 struct furn_t;
+
 using furn_id = int_id<furn_t>;
 using furn_str_id = string_id<furn_t>;
 struct mtype;
+
 using mtype_id = string_id<mtype>;
 struct projectile;
 struct veh_collision;
 class tileray;
 class harvest_list;
+
 using harvest_id = string_id<harvest_list>;
 class npc_template;
 
@@ -99,12 +97,16 @@ struct wrapped_vehicle {
 typedef std::vector<wrapped_vehicle> VehicleList;
 typedef std::string items_location;
 struct vehicle_prototype;
+
 using vproto_id = string_id<vehicle_prototype>;
 class VehicleGroup;
+
 using vgroup_id = string_id<VehicleGroup>;
 struct MonsterGroup;
+
 using mongroup_id = string_id<MonsterGroup>;
 class map;
+
 enum ter_bitflags : int;
 struct pathfinding_cache;
 struct pathfinding_settings;
@@ -297,6 +299,9 @@ class map
 
         bool apply_vision_effects( const catacurses::window &w, const visibility_type vis ) const;
 
+        std::tuple<maptile, maptile, maptile> get_wind_blockers( const int &winddirection,
+                const tripoint &pos ); //see field.cpp
+
         /** Draw a visible part of the map into `w`.
          *
          * This method uses `g->u.posx()/posy()` for visibility calculations, so it can
@@ -455,6 +460,16 @@ class map
         **/
         bool sees( const tripoint &F, const tripoint &T, int range, int &bresenham_slope ) const;
     public:
+        /**
+        * Returns coverage of target in relation to the observer. Target is loc2, observer is loc1.
+        * First tile from the target is an obstacle, which has the coverage value.
+        * If there's no obstacle adjacent to the target - no coverage.
+        */
+        int obstacle_coverage( const tripoint &loc1, const tripoint &loc2 ) const;
+        /**
+        * Returns coverage value of the tile.
+        */
+        int coverage( const tripoint &p ) const;
         /**
          * Check whether there's a direct line of sight between `F` and
          * `T` with the additional movecost restraints.
@@ -732,9 +747,11 @@ class map
         void make_rubble( const tripoint &p, const furn_id &rubble_type, const bool items );
 
         bool is_divable( const int x, const int y ) const;
+        bool is_water_shallow_current( const int x, const int y ) const;
         bool is_outside( const int x, const int y ) const;
         bool is_divable( const tripoint &p ) const;
         bool is_outside( const tripoint &p ) const;
+        bool is_water_shallow_current( const tripoint &p ) const;
         /** Check if the last terrain is wall in direction NORTH, SOUTH, WEST or EAST
          *  @param no_furn if true, the function will stop and return false
          *  if it encounters a furniture
@@ -753,6 +770,8 @@ class map
          * @param threshold Fuel threshold (lower means worse fuels are accepted).
          */
         bool flammable_items_at( const tripoint &p, int threshold = 0 );
+        /** Returns true if there is a flammable item or field or the furn/terrain is flammable at p */
+        bool is_flammable( const tripoint &p );
         point random_outdoor_tile();
         // mapgen
 
@@ -778,8 +797,9 @@ class map
         // Change all instances of $from->$to
         void translate( const ter_id &from, const ter_id &to );
         // Change all instances $from->$to within this radius, optionally limited to locations in the same submap.
+        // Optionally toggles instances $from->$to & $to->$from
         void translate_radius( const ter_id &from, const ter_id &to, const float radi, const tripoint &p,
-                               const bool same_submap = false );
+                               const bool same_submap = false, const bool toggle_between = false );
         bool close_door( const tripoint &p, const bool inside, const bool check_only );
         bool open_door( const tripoint &p, const bool inside, const bool check_only = false );
         // Destruction
@@ -813,16 +833,24 @@ class map
         bool hit_with_acid( const tripoint &p );
         bool hit_with_fire( const tripoint &p );
 
-        bool has_adjacent_furniture( const tripoint &p );
-        /** Remove moppable fields/items at this location
-        *  @param p the location
-        *  @return true if anything moppable was there, false otherwise.
-        */
+        /**
+         * Returns true if there is furniture for which filter returns true in a 1 tile radius of p.
+         * Pass return_true<furn_t> to detect all adjacent furniture.
+         * @param p the location to check at
+         * @param filter what to filter the furniture by.
+         */
+        bool has_adjacent_furniture_with( const tripoint &p,
+                                          const std::function<bool( const furn_t & )> &filter );
+        /**
+         * Remove moppable fields/items at this location
+         *  @param p the location
+         *  @return true if anything moppable was there, false otherwise.
+         */
         bool mop_spills( const tripoint &p );
         /**
-        * Moved here from weather.cpp for speed. Decays fire, washable fields and scent.
-        * Washable fields are decayed only by 1/3 of the amount fire is.
-        */
+         * Moved here from weather.cpp for speed. Decays fire, washable fields and scent.
+         * Washable fields are decayed only by 1/3 of the amount fire is.
+         */
         void decay_fields_and_scent( const time_duration &amount );
 
         // Signs
@@ -942,12 +970,12 @@ class map
          * somewhere else.
          */
         /*@{*/
-        std::list<item> use_amount_square( const tripoint &p, const itype_id type,
-                                           long &quantity, const std::function<bool( const item & )> &filter = is_crafting_component );
+        std::list<item> use_amount_square( const tripoint &p, const itype_id &type,
+                                           long &quantity, const std::function<bool( const item & )> &filter = return_true<item> );
         std::list<item> use_amount( const tripoint &origin, const int range, const itype_id type,
-                                    long &amount, const std::function<bool( const item & )> &filter = is_crafting_component );
+                                    long &amount, const std::function<bool( const item & )> &filter = return_true<item> );
         std::list<item> use_charges( const tripoint &origin, const int range, const itype_id type,
-                                     long &amount, const std::function<bool( const item & )> &filter = return_true );
+                                     long &amount, const std::function<bool( const item & )> &filter = return_true<item> );
         /*@}*/
         std::list<std::pair<tripoint, item *> > get_rc_items( int x = -1, int y = -1, int z = -1 );
 
@@ -1128,10 +1156,9 @@ class map
         computer *add_computer( const tripoint &p, const std::string &name, const int security );
 
         // Camps
-        bool allow_camp( const tripoint &p, const int radius = CAMPCHECK );
-        basecamp *camp_at( const tripoint &p, const int radius = CAMPSIZE );
         void add_camp( const tripoint &p, const std::string &name );
-
+        void remove_submap_camp( const tripoint & );
+        basecamp hoist_submap_camp( const tripoint &p );
         // Graffiti
         bool has_graffiti_at( const tripoint &p ) const;
         const std::string &graffiti_at( const tripoint &p ) const;
@@ -1180,7 +1207,8 @@ class map
         // mapgen.cpp functions
         void generate( const int x, const int y, const int z, const time_point &when );
         void place_spawns( const mongroup_id &group, const int chance,
-                           const int x1, const int y1, const int x2, const int y2, const float density );
+                           const int x1, const int y1, const int x2, const int y2, const float density,
+                           const bool individual = false, const bool friendly = false );
         void place_gas_pump( const int x, const int y, const int charges );
         void place_gas_pump( const int x, const int y, const int charges, const std::string &fuel_type );
         // 6 liters at 250 ml per charge
@@ -1469,7 +1497,7 @@ class map
          * Internal version of the drawsq. Keeps a cached maptile for less re-getting.
          * Returns true if it has drawn all it should, false if `draw_from_above` should be called after.
          */
-        bool draw_maptile( const catacurses::window &w, player &u, const tripoint &p,
+        bool draw_maptile( const catacurses::window &w, const player &u, const tripoint &p,
                            const maptile &tile,
                            bool invert, bool show_items,
                            const tripoint &view_center,
@@ -1480,7 +1508,7 @@ class map
         /**
          * Draws the tile as seen from above.
          */
-        void draw_from_above( const catacurses::window &w, player &u, const tripoint &p,
+        void draw_from_above( const catacurses::window &w, const player &u, const tripoint &p,
                               const maptile &tile, bool invert,
                               const tripoint &view_center,
                               bool low_light, bool bright_light, bool inorder ) const;
@@ -1620,7 +1648,7 @@ class tinymap : public map
         friend class editmap;
     public:
         tinymap( int mapsize = 2, bool zlevels = false );
-        bool inbounds( const tripoint &p ) const;
+        bool inbounds( const tripoint &p ) const override;
 };
 
 #endif

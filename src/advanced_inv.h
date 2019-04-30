@@ -2,6 +2,8 @@
 #ifndef ADVANCED_INV_H
 #define ADVANCED_INV_H
 
+#include <ctype.h>
+#include <stddef.h>
 #include <array>
 #include <functional>
 #include <list>
@@ -46,6 +48,7 @@ enum advanced_inv_sortby {
     SORTBY_CHARGES,
     SORTBY_CATEGORY,
     SORTBY_DAMAGE,
+    SORTBY_AMMO,
     SORTBY_SPOILAGE
 };
 
@@ -59,7 +62,7 @@ void advanced_inv();
 
 /**
  * Cancels ongoing move all action.
- * @todo: Make this not needed.
+ * TODO: Make this not needed.
  */
 void cancel_aim_processing();
 

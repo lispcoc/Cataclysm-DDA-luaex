@@ -2,45 +2,60 @@
 #ifndef VEHICLE_H
 #define VEHICLE_H
 
+#include <limits.h>
+#include <stddef.h>
 #include <array>
 #include <list>
 #include <map>
 #include <stack>
 #include <vector>
+#include <functional>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "active_item_cache.h"
 #include "calendar.h"
 #include "clzones.h"
 #include "damage.h"
+#include "game_constants.h"
 #include "item.h"
 #include "item_group.h"
 #include "item_stack.h"
 #include "line.h"
 #include "string_id.h"
 #include "tileray.h"
-#include "ui.h"
 #include "units.h"
+#include "enums.h"
+#include "item_location.h"
 
 class nc_color;
-class map;
 class player;
 class npc;
 class vehicle;
 class vpart_info;
 class vehicle_part_range;
+class JsonIn;
+class JsonOut;
+class vehicle_cursor;
+class zone_data;
+struct itype;
+struct uilist_entry;
+template <typename T> class visitable;
+
 enum vpart_bitflags : int;
 using vpart_id = string_id<vpart_info>;
 struct vehicle_prototype;
+
 using vproto_id = string_id<vehicle_prototype>;
 template<typename feature_type>
 class vehicle_part_with_feature_range;
+
 namespace catacurses
 {
 class window;
 } // namespace catacurses
-typedef enum {
-    DONE, ITEMS_FROM_CARGO, ITEMS_FROM_GROUND,
-} veh_interact_results;
 namespace vehicles
 {
 extern point cardinal_d[5];
@@ -591,7 +606,6 @@ class vehicle
         void smash_security_system();
         // get vpart powerinfo for part number, accounting for variable-sized parts and hps.
         int part_vpower_w( int index, bool at_full_hp = false ) const;
-        int part_vpower_vhp( int index, bool at_full_hp = false ) const;
 
         // get vpart epowerinfo for part number.
         int part_epower_w( int index ) const;
@@ -773,8 +787,8 @@ class vehicle
          * Yields a range containing all parts (including broken ones) that can be
          * iterated over.
          */
-        // @todo maybe not include broken ones? Have a separate function for that?
-        // @todo rename to just `parts()` and rename the data member to `parts_`.
+        // TODO: maybe not include broken ones? Have a separate function for that?
+        // TODO: rename to just `parts()` and rename the data member to `parts_`.
         vehicle_part_range get_all_parts() const;
         /**
          * Yields a range of parts of this vehicle that each have the given feature
@@ -964,6 +978,9 @@ class vehicle
         // Checks how much of an engine's current fuel is left in the tanks.
         int engine_fuel_left( const int e, bool recurse = false ) const;
         int fuel_capacity( const itype_id &ftype ) const;
+
+        // Returns the total specific energy of this fuel type. Frozen is ignored.
+        float fuel_specific_energy( const itype_id &ftype ) const;
 
         // drains a fuel type (e.g. for the kitchen unit)
         // returns amount actually drained, does not engage reactor
@@ -1329,7 +1346,7 @@ class vehicle
          * @param pt the vehicle part containing the turret we're trying to target.
          * @return npc object with suitable attributes for targeting a vehicle turret.
          */
-        npc get_targeting_npc( vehicle_part &pt );
+        npc get_targeting_npc( const vehicle_part &pt );
         /*@}*/
 
         /**
@@ -1438,7 +1455,7 @@ class vehicle
         void use_monster_capture( int part, const tripoint &pos );
         void use_bike_rack( int part );
 
-        veh_interact_results interact_with( const tripoint &pos, int interact_part );
+        void interact_with( const tripoint &pos, int interact_part );
 
         const std::string disp_name() const;
 
@@ -1469,7 +1486,9 @@ class vehicle
         std::vector<int> solar_panels;     // List of solar panel indices
         std::vector<int> wind_turbines;     // List of wind turbine indices
         std::vector<int> water_wheels;     // List of water wheel indices
+        std::vector<int> sails;            // List of sail indices
         std::vector<int> funnels;          // List of funnel indices
+        std::vector<int> heaters;          // List of heater parts
         std::vector<int> loose_parts;      // List of UNMOUNT_ON_MOVE parts
         std::vector<int> wheelcache;       // List of wheels
         std::vector<int> steering;         // List of STEERABLE parts
