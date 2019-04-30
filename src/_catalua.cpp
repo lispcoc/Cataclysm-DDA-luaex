@@ -1,4 +1,3 @@
-#define SOL_CHECK_ARGUMENTS 1
 #include <cassert>
 #include <iostream>
 #include <set>
@@ -7,6 +6,27 @@
 #include <functional>
 
 #include "_catalua.h"
+
+class lua_iuse_actor : iuse_actor
+{
+    public:
+        lua_iuse_actor( const std::string &type ) : iuse_actor( type ) { }
+        ~lua_iuse_actor() override = default;
+
+        void load( JsonObject & ) override {}
+        long use( player &, item &it, bool a, const tripoint &pos ) const override {
+            long ret  = 0;
+            try {
+                ret = get_luastate()["__cdda_lua_iuse_functions"][type](it, a, pos);
+            } catch( const std::exception &err ) {
+                debugmsg( _( "Lua error: %1$s" ), err.what() );
+            }
+            return ret;
+        }
+        iuse_actor *clone() const override {
+            return new lua_iuse_actor( *this );
+        }
+};
 
 kaguya::State *lua_ptr = nullptr;
 void _autogen_lua_global_bindings(kaguya::State &lua);
@@ -45,6 +65,7 @@ void init_lua()
 
     _autogen_lua_register(lua);
 
+    lua["__cdda_lua_iuse_functions"] = kaguya::NewTable();
     lua.dofile("test.lua");
 }
 
@@ -55,13 +76,20 @@ kaguya::State& get_luastate()
     }
     kaguya::State &lua = *lua_ptr;
     // update Lua global values
-    _autogen_lua_global_bindings(lua);
+    //_autogen_lua_global_bindings(lua);
     return lua;
 }
 
-void register_iuse( const std::string, kaguya::LuaFunction )
+void register_iuse( const std::string type, const kaguya::LuaRef &f )
 {
-    printf("to be done");
+    kaguya::LuaTable tbl = get_luastate()["__cdda_lua_iuse_functions"];
+    tbl[type] = f;
+    item_controller->add_actor_lua( lua_iuse_actor( type ).clone() );
+}
+
+void Item_factory::add_actor_lua( iuse_actor *ptr )
+{
+    add_actor( ptr );
 }
 
 //

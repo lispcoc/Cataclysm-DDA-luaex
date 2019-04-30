@@ -10,4 +10,12 @@ function on_day_passed()
 end
 function on_year_passed()
 end
-register_iuse("a",on_minute_passed)
+
+function test(a,b,c)
+    map:add_item(player:pos(),item("lua_test_item"))
+    g:zoom_in()
+    player:mutate()
+    return 1
+end
+
+register_iuse("lua_test",test)

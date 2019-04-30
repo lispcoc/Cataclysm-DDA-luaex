@@ -1,0 +1,22 @@
+[
+    {
+        "type": "item_action",
+        "id": "lua_test",
+        "name": "Lua test"
+    },
+    {
+      "id": "lua_test_item",
+      "type": "TOOL",
+      "name": "Lua test item",
+      "description": "Lua test item",
+      "weight": 0,
+      "volume": 0,
+      "price": 0,
+      "to_hit": 0,
+      "bashing": 0,
+      "material": [ "steel" ],
+      "symbol": ";",
+      "color": "light_gray",
+      "use_action": { "type": "lua_test" }
+    }
+]

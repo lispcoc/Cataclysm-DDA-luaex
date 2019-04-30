@@ -1,0 +1,18 @@
+[
+    {
+        "type": "MOD_INFO",
+        "ident": "lua_sample",
+        "name": "lua_sample",
+        "authors": [
+            "lisp"
+        ],
+        "maintainers": [
+            "lisp"
+        ],
+        "description": "Luaのサンプルです。",
+        "category": "misc_additions",
+        "dependencies": [
+            "dda"
+        ]
+    }
+]
