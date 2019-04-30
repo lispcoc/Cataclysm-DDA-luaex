@@ -43,6 +43,9 @@ struct mtype_special_attack {
         mtype_special_attack( mattack_actor *f ) : actor( f ) { }
         mtype_special_attack( const mtype_special_attack &other ) :
             mtype_special_attack( other.actor->clone() ) { }
+#ifdef LUA
+        mtype_special_attack() = default;
+#endif
 
         ~mtype_special_attack() = default;
 

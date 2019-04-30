@@ -53,6 +53,9 @@ struct projectile {
 };
 
 struct dealt_projectile_attack {
+#ifdef LUA
+    dealt_projectile_attack() = default;
+#endif
     projectile proj; // What we used to deal the attack
     Creature *hit_critter; // The critter that stopped the projectile or null
     dealt_damage_instance dealt_dam; // If hit_critter isn't null, hit data is written here

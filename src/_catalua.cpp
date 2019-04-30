@@ -9,6 +9,7 @@
 #include "_catalua.h"
 
 kaguya::State *lua_ptr = nullptr;
+void _autogen_lua_global_bindings(kaguya::State &lua);
 
 auto dummy_gun_mode = gun_mode();
 template<>
@@ -53,7 +54,14 @@ kaguya::State& get_luastate()
         throw std::runtime_error( "Lua State is not found." );
     }
     kaguya::State &lua = *lua_ptr;
+    // update Lua global values
+    _autogen_lua_global_bindings(lua);
     return lua;
+}
+
+void register_iuse( const std::string, kaguya::LuaFunction )
+{
+    printf("to be done");
 }
 
 #if 0 //LUAINTF test

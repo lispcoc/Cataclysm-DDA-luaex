@@ -1,4 +1,5 @@
 dofile("lua/lua_classes.lua")
+dofile("lua/lua_global.lua")
 
 function TableConcat(t1,t2)
     for i=1,#t2 do
@@ -14,15 +15,19 @@ function gen_constructors(cls_cpp_name, t, indent)
         str = cls_cpp_name .. '(' .. table.concat(args, ', ') .. ')'
         table.insert(constructors, str)
     end
-    return indent .. 'sol::constructors<' .. table.concat(constructors, ', ') .. '>()'
+    if #constructors == 0 then
+        return nil
+    else
+        return indent .. '.setConstructors<' .. table.concat(constructors, ', ') .. '>()'
+    end
 end
 
 function gen_attributes(cls_cpp_name, t, indent)
     indent = indent or ''
     attributes = {}
     for name, data in pairs(t) do
+        str = ""
         if not data.reference then
-            str = ""
             if data.static then
                 -- not support
             else
@@ -32,11 +37,21 @@ function gen_attributes(cls_cpp_name, t, indent)
                     str = indent .. '.addProperty("' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ')'
                 end
             end
-            if str ~= "" then
-                table.insert(attributes, str)
+        else
+            if data.static then
+                -- not support
+            else
+                if data.writable then
+                    --str = indent .. '.addProperty("' .. name .. '", [](' .. cls_cpp_name .. '* self){auto&& tmp = self->' .. name .. '; return tmp;})'
+                else
+                    --str = indent .. '.addProperty("' .. name .. '", [](' .. cls_cpp_name .. '* self){auto&& tmp = self->' .. name .. '; return tmp;})'
+                end
             end
         end
-    end
+        if str ~= "" then
+            table.insert(attributes, str)
+        end
+end
     return attributes
 end
 
@@ -59,22 +74,31 @@ function gen_functions(cls_cpp_name, t, indent)
     for key, data_list in pairs(functions) do
         str = ''
         name = data_list[1].name
+        cpp_name = data_list[1].cpp_name or name
         func_str_list = {}
         for _, data in ipairs(data_list) do
-            func_str = 'static_cast<' .. data.rval .. '('
-            func_str = func_str .. cls_cpp_name .. '::'
-            func_str = func_str .. '*)('
-            if data.optional_args then
-                all_args = TableConcat(data.args, data.optional_args)
-            else
-                all_args = data.args 
+            -- generate cast to resolve overloaded function
+            cast_pre = ''
+            cast_suf = ''
+            if not string.match (cpp_name, "^operator") then
+                cast_pre = 'static_cast<' .. data.rval .. '('
+                cast_pre = cast_pre .. cls_cpp_name .. '::'
+                cast_pre = cast_pre .. '*)('
+                if data.optional_args then
+                    all_args = TableConcat(data.args, data.optional_args)
+                else
+                    all_args = data.args 
+                end
+                arg_str = table.concat(all_args, ', ')
+                cast_pre = cast_pre .. arg_str .. ')'
+                if data.const then
+                    cast_pre = cast_pre .. ' const'
+                end
+                cast_pre = cast_pre .. '>('
+                cast_suf = ')'
             end
-            arg_str = table.concat(all_args, ', ')
-            func_str = func_str .. arg_str .. ')'
-            if data.const then
-                func_str = func_str .. ' const'
-            end
-            func_str = func_str .. '>(&' .. cls_cpp_name .. '::' .. name .. ')'
+
+            func_str = cast_pre .. '&' .. cls_cpp_name .. '::' .. cpp_name .. cast_suf
             table.insert(func_str_list, func_str)
         end
         if #func_str_list == 1 then
@@ -156,6 +180,10 @@ for _, key in pairs(keys) do
     value = classes[key]
     lines = {}
     table.insert(lines, 'lua["' .. key .. '"].setClass(kaguya::UserdataMetatable<' .. value.cpp_name .. '>()')
+    constructors = gen_constructors(value.cpp_name, value.new, '    ')
+    if constructors ~= nil then
+        table.insert(lines, constructors)
+    end
     lines = TableConcat(lines, gen_attributes(value.cpp_name, value.attributes, '    '))
     lines = TableConcat(lines, gen_functions(value.cpp_name, value.functions, '    '))
     table.insert(lines, '    );')
@@ -170,6 +198,28 @@ for _, key in pairs(keys) do
     f:write('}\n')
     f:close()
 end
+
+-- global bindings
+f = io.open("src/lua/_autogen_lua_global_bindings.cpp", "w")
+f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
+f:write('\n')
+f:write('void _autogen_lua_global_bindings(kaguya::State &lua)\n')
+f:write('{\n')
+--   global references
+for key, data in pairs(global_references) do
+    f:write('    lua["' .. key .. '"] = ' .. data.cpp_name.. ';\n')
+end
+--   global functions
+for _, data in pairs(global_functions) do
+    cpp_name = data.cpp_name or data.name
+    f:write('    lua["' .. data.name .. '"] = ' .. cpp_name.. ';\n')
+end
+f:write('}\n')
+f:close()
+table.insert(autogen_functions, "_autogen_lua_global_bindings")
+
+
+-- entry point
 f = io.open("src/lua/_autogen_lua_register.cpp", "w")
 f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
 for _, f_str in ipairs(autogen_functions) do

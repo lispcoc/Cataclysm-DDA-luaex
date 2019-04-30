@@ -77,12 +77,24 @@ blacklist_type = [
     'game::monster_range',
     'game::npc_range',
     'item_tweaks',
+    'default_charges_tag',
+    'solitary_tag',
+    'mon_action_defend',
+    'mon_action_death',
+    'mon_action_attack',
 ]
 
 blacklist_function = [
     'melee_attack',
     'build_obstacle_cache',
 ]
+
+def check_blacklist_type(type):
+    for b in blacklist_type:
+        reg = re.compile(r"\b" + b + r"\b")
+        if reg.search(type):
+            return True
+    return False
 
 # =======================================================
 #
@@ -93,7 +105,7 @@ blacklist_function = [
 
 class CppFunction:
     def __init__(self):
-        self.name = None
+        self.name = ''
         self.definition = None
         self.args = []
         self.optional_args = []
@@ -128,7 +140,11 @@ class CppFunction:
 
     def str(self):
         string = "{ "
-        string += 'name = "' + self.name + '", '
+        if self.name != self.luaName():
+            string += 'name = "' + self.luaName() + '", '
+            string += 'cpp_name = "' + self.name + '", '
+        else:
+            string += 'name = "' + self.luaName() + '", '
         string += 'rval = '
         #if CppType(self.type).name == "null":
         #    string += 'nil, '
@@ -158,6 +174,8 @@ class CppFunction:
     def strRVal(self):
         if not self.definition:
             return ''
+        if re.match(r'^operator', self.name):
+            return ''
         r = re.sub(r'\s+[^\s]+$', '', self.definition)
         r = re.sub(r'static ', '', r)
         r = re.sub(r'constexpr ', '', r)
@@ -165,11 +183,13 @@ class CppFunction:
         return r
 
     def isValid(self):
+        if self.isInvalidOp():
+            return False
         if self.virtual:
             return False
         if self.name in blacklist_function:
             return False
-        if self.strRVal() in blacklist_type:
+        if check_blacklist_type(self.strRVal()):
             return False
         for a in self.args:
             if re.search(r"typename ", CppType(a).definition):
@@ -180,16 +200,33 @@ class CppFunction:
                 return False
             if re.search(r'&&', CppType(a).definition):
                 return False
-            if CppType(a).name in blacklist_type:
+            if check_blacklist_type(CppType(a).name):
                 return False
         for a in self.optional_args:
             if re.search(r"typename ", CppType(a).definition):
                 return False
             if re.search(r'\(\)$', CppType(a).definition):
                 return False
-            if CppType(a).name in blacklist_type:
+            if check_blacklist_type(CppType(a).name):
                 return False
         return True
+
+    def isInvalidOp(self):
+        if not re.match(r'^operator', self.name):
+            return False
+        if self.name == 'operator int':
+            return False
+        return True
+
+    def luaName(self):
+        lua_name_map = {
+            'operator int': '_op_int',
+            'operator float': '_op_float',
+            'operator double': '_op_double',
+        }
+        if self.name in lua_name_map.keys():
+            return lua_name_map[self.name]
+        return self.name
 
 # =======================================================
 #
@@ -258,6 +295,8 @@ class CppVariable:
         return False
 
     def isValid(self):
+        if check_blacklist_type(CppType(self.type).name):
+            return False
         return True
 
 # =======================================================
@@ -376,9 +415,9 @@ class CppClass:
                         s += '--'
                     s += '{ '
                     for a in tmp_func.args:
-                        s += '"' + CppType(a).name + '", '
+                        s += '"' + CppType(a).definition + '", '
                     for a in tmp_func.optional_args:
-                        s += '"' + CppType(a).name + '", '
+                        s += '"' + CppType(a).definition + '", '
                     s += '},\n'
         s += '    },' + '\n'
         s += '    attributes = {' + '\n'
@@ -392,8 +431,8 @@ class CppClass:
         for f in self.functions:
             if self.cpp_name == f.name or ('~' + self.cpp_name) == f.name:
                 continue
-            if re.match(r'^operator', f.name) :
-                continue
+            #if re.match(r'^operator', f.name) :
+            #    continue
             s += '        '
             if not f.isValid():
                 s += '--'
@@ -424,7 +463,7 @@ for xml_file in xml_files:
     tree = etree.parse(xml_file)
     root = tree.getroot()
 
-    compounds = tree.xpath("//compounddef[@kind='class']")
+    compounds = tree.xpath("//compounddef[@kind='class' or @kind='struct']")
     # Enumurate all types
     for compound in compounds:
         new_class = CppClass.load_from_xml(compound)

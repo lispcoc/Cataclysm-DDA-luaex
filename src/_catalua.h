@@ -233,5 +233,6 @@ void dummy();
 void _autogen_lua_register(kaguya::State &lua);
 
 kaguya::State& get_luastate();
+void register_iuse( const std::string, kaguya::LuaFunction );
 
 #endif
