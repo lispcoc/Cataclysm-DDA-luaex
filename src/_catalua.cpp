@@ -35,6 +35,8 @@ kaguya::State *lua_ptr = nullptr;
 // we know where to load files from.
 std::string lua_file_path;
 
+static std::unique_ptr<uilist> uilist_instance;
+
 void _autogen_lua_global_bindings(kaguya::State &lua);
 
 auto dummy_gun_mode = gun_mode();
@@ -53,6 +55,12 @@ bool string_id<activity_type>::is_valid() const
 {
     return false;
 }
+
+void Item_factory::add_actor_lua( iuse_actor *ptr )
+{
+    add_actor( ptr );
+}
+
 
 void lua_error_handler( int errCode, const char * szError )
 {
@@ -108,9 +116,73 @@ void add_msg_wrapper( const std::string &text )
     add_msg( text );
 }
 
-void Item_factory::add_actor_lua( iuse_actor *ptr )
+void popup_wrapper( const std::string &text )
 {
-    add_actor( ptr );
+    popup( "%s", text.c_str() );
+}
+
+bool query_yn_wrapper( const std::string &text )
+{
+    return query_yn( text );
+}
+
+std::string string_input_popup_wrapper( const std::string &title, int width,
+        const std::string &desc )
+{
+    return string_input_popup().title( title ).width( width ).description( desc ).query_string();
+}
+
+uilist *create_uilist()
+{
+    uilist_instance.reset( new uilist() );
+    return uilist_instance.get();
+}
+
+uilist *create_uilist_no_cancel()
+{
+    uilist_instance.reset( new uilist() );
+    uilist_instance->allow_cancel = false;
+    return uilist_instance.get();
+}
+
+calendar &get_calendar_turn_wrapper()
+{
+    return calendar::turn;
+}
+
+time_duration get_time_duration_wrapper( const int t )
+{
+    return time_duration::from_turns( t );
+}
+
+monster *get_monster_at( const tripoint & p )
+{
+    return g->critter_at<monster>(p);
+}
+
+Creature *get_critter_at( const tripoint & p )
+{
+    return g->critter_at<Creature>(p);
+}
+
+npc *get_npc_at( const tripoint & p )
+{
+    return g->critter_at<npc>(p);
+}
+
+monster *create_monster( const mtype_id &mon_type, const tripoint &p )
+{
+    monster new_monster( mon_type, p );
+    if( !g->add_zombie( new_monster ) ) {
+        return nullptr;
+    } else {
+        return g->critter_at<monster>( p );
+    }
+}
+
+std::string get_omt_id( const overmap &om, const tripoint &p )
+{
+    return om.get_ter( p ).id().str();
 }
 
 //

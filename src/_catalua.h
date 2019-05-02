@@ -235,5 +235,18 @@ kaguya::State& get_luastate();
 void lua_loadmod( const std::string &base_path, const std::string &main_file_name );
 void register_iuse( const std::string type, const kaguya::LuaRef &f );
 void add_msg_wrapper( const std::string &text );
+void popup_wrapper( const std::string &text );
+bool query_yn_wrapper( const std::string &text );
+std::string string_input_popup_wrapper( const std::string &title, int width,
+        const std::string &desc );
+uilist *create_uilist();
+uilist *create_uilist_no_cancel();
+calendar &get_calendar_turn_wrapper();
+time_duration get_time_duration_wrapper( const int t );
+monster *get_monster_at( const tripoint & p );
+Creature *get_critter_at( const tripoint & p );
+npc *get_npc_at( const tripoint & p );
+monster *create_monster( const mtype_id &mon_type, const tripoint &p );
+std::string get_omt_id( const overmap &om, const tripoint &p );
 
 #endif
