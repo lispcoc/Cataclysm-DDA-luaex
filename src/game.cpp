@@ -393,7 +393,16 @@ void game::load_core_data( loading_ui &ui )
 
 void game::load_data_from_dir( const std::string &path, const std::string &src, loading_ui &ui )
 {
+    // Process a preload file before the .json files,
+    // so that custom IUSE's can be defined before
+    // the items that need them are parsed
+    lua_loadmod( path, "preload.lua" );
+
     DynamicDataLoader::get_instance().load_data_from_path( path, src, ui );
+
+    // main.lua will be executed after JSON, allowing to
+    // work with items defined by mod's JSON
+    lua_loadmod( path, "main.lua" );
 }
 
 game::~game()

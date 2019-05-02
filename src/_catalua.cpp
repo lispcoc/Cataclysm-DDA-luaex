@@ -1,3 +1,4 @@
+#define SOL_CHECK_ARGUMENTS 1
 #include <cassert>
 #include <iostream>
 #include <set>
@@ -29,6 +30,11 @@ class lua_iuse_actor : iuse_actor
 };
 
 kaguya::State *lua_ptr = nullptr;
+
+// Keep track of the current mod from which we are executing, so that
+// we know where to load files from.
+std::string lua_file_path;
+
 void _autogen_lua_global_bindings(kaguya::State &lua);
 
 auto dummy_gun_mode = gun_mode();
@@ -66,7 +72,7 @@ void init_lua()
     _autogen_lua_register(lua);
 
     lua["__cdda_lua_iuse_functions"] = kaguya::NewTable();
-    lua.dofile("test.lua");
+    lua.dofile("lua/autoexec.lua");
 }
 
 kaguya::State& get_luastate()
@@ -78,6 +84,16 @@ kaguya::State& get_luastate()
     // update Lua global values
     //_autogen_lua_global_bindings(lua);
     return lua;
+}
+
+void lua_loadmod( const std::string &base_path, const std::string &main_file_name )
+{
+    std::string full_path = base_path + "/" + main_file_name;
+    if( file_exist( full_path ) ) {
+        lua_file_path = base_path;
+        get_luastate().dofile(full_path);
+        lua_file_path.clear();
+    }
 }
 
 void register_iuse( const std::string type, const kaguya::LuaRef &f )
