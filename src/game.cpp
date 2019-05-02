@@ -1390,18 +1390,19 @@ bool game::do_turn()
     try {
         if( calendar::once_every( 1_days ) ) {
             if( calendar::turn.day_of_year() == 0 ) {
-                get_luastate()["on_year_passed"]();
+                get_luastate()["mod_callback"]("on_year_passed");
             }
-            get_luastate()["on_day_passed"]();
+            get_luastate()["mod_callback"]("on_day_passed");
         }
+
         if( calendar::once_every( 1_hours ) ) {
-            get_luastate()["on_hour_passed"]();
+            get_luastate()["mod_callback"]("on_hour_passed");
         }
 
         if( calendar::once_every( 1_minutes ) ) {
-            get_luastate()["on_minute_passed"]();
+            get_luastate()["mod_callback"]("on_minute_passed");
         }
-        get_luastate()["on_turn_passed"]();
+        get_luastate()["mod_callback"]("on_turn_passed");
     } catch( const std::exception &err ) {
         debugmsg( _( "Lua error: %1$s" ), err.what() );
     }

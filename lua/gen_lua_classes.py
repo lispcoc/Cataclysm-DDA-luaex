@@ -70,6 +70,10 @@ valid_types = [
     'item_location',
 ]
 
+lua_typemap = {
+    'game': 'lua_game',
+}
+
 blacklist_type = [
     'inventory_item_menu_positon',
     'points_left',
@@ -384,7 +388,10 @@ class CppClass:
     def load_from_xml(cls, xml_compounddef):
         new_class = CppClass()
         new_class.cpp_name = xml_compounddef.find('compoundname').text
-        new_class.name = new_class.cpp_name.replace(':', '_')
+        new_class.name = new_class.cpp_name
+        if new_class.name in lua_typemap.keys():
+            new_class.name = lua_typemap[new_class.name]
+        new_class.name = new_class.name.replace(':', '_')
         # function
         for member in xml_compounddef.iter('memberdef'):
             new_func = CppFunction.load_from_xml(member)

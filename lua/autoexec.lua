@@ -1,12 +1,18 @@
+package.path = package.path .. ";./lua/?.lua" --Windows/Linux
+package.path = package.path .. ";/usr/share/cataclysm-dda/lua/?.lua" --Linux(via make install)
 
-function on_turn_passed()
-    print(player:pos().x,player:pos().y,player:pos().z)
-end
-function on_minute_passed()
-end
-function on_hour_passed()
-end
-function on_day_passed()
-end
-function on_year_passed()
+log = require("log")
+log.init("./config/lua-log.log")
+
+-- table containing our mods
+mods = { }
+
+function mod_callback(callback_name, ...)
+    rval = nil
+    for modname, mod_instance in pairs(mods) do
+        if type(mod_instance[callback_name]) == "function" then
+            rval = mod_instance[callback_name](...)
+        end
+    end
+    return rval
 end

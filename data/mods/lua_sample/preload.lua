@@ -7,4 +7,4 @@ function test(a,b,c)
     return 0
 end
 
-register_iuse("lua_test",test)
+game.register_iuse("lua_test",test)

@@ -210,9 +210,10 @@ for key, data in pairs(global_references) do
     f:write('    lua["' .. key .. '"] = ' .. data.cpp_name.. ';\n')
 end
 --   global functions
+f:write('    lua["game"] = kaguya::NewTable();\n')
 for _, data in pairs(global_functions) do
     cpp_name = data.cpp_name or data.name
-    f:write('    lua["' .. data.name .. '"] = ' .. cpp_name.. ';\n')
+    f:write('    lua["game"]["' .. data.name .. '"] = ' .. cpp_name.. ';\n')
 end
 f:write('}\n')
 f:close()

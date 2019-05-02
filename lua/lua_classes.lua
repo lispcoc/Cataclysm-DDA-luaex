@@ -691,7 +691,7 @@ classes = {
             { name = "count", rval = "size_t", args = { }, const = false, static = true, },
         }
     },
-    game = {
+    lua_game = {
         cpp_name = "game",
         new = {
             { },

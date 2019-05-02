@@ -103,6 +103,11 @@ void register_iuse( const std::string type, const kaguya::LuaRef &f )
     item_controller->add_actor_lua( lua_iuse_actor( type ).clone() );
 }
 
+void add_msg_wrapper( const std::string &text )
+{
+    add_msg( text );
+}
+
 void Item_factory::add_actor_lua( iuse_actor *ptr )
 {
     add_actor( ptr );
