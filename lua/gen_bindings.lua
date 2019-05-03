@@ -220,6 +220,24 @@ f:close()
 table.insert(autogen_functions, "_autogen_lua_global_bindings")
 
 
+-- enums
+f = io.open("src/lua/_autogen_lua_enum_bindings.cpp", "w")
+f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
+f:write('\n')
+f:write('void _autogen_lua_enum_bindings(kaguya::State &lua)\n')
+f:write('{\n')
+f:write('    lua["enums"] = kaguya::NewTable();\n')
+for key, data in pairs(enums) do
+    f:write('    lua["enums"]["' .. key .. '"] = kaguya::NewTable();\n')
+    for _, value in pairs(data.values) do
+        f:write('    lua["enums"]["' .. key .. '"]["' .. value[1] .. '"] = ' .. value[2] .. ';\n')
+    end
+end
+f:write('}\n')
+f:close()
+table.insert(autogen_functions, "_autogen_lua_enum_bindings")
+
+
 -- entry point
 f = io.open("src/lua/_autogen_lua_register.cpp", "w")
 f:write(table.concat(cpp_template_header, '\n') .. '\n\n')

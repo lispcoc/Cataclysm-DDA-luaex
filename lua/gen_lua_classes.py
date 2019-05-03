@@ -93,6 +93,7 @@ blacklist_function = [
     'build_obstacle_cache',
 ]
 
+
 def check_blacklist_type(type):
     for b in blacklist_type:
         reg = re.compile(r"\b" + b + r"\b")
@@ -150,9 +151,9 @@ class CppFunction:
         else:
             string += 'name = "' + self.luaName() + '", '
         string += 'rval = '
-        #if CppType(self.type).name == "null":
+        # if CppType(self.type).name == "null":
         #    string += 'nil, '
-        #else:
+        # else:
         #    string += '"' + CppType(self.type).definition + '", '
         string += '"' + self.strRVal() + '", '
         string += 'args = { '
@@ -403,7 +404,7 @@ class CppClass:
                 new_class.attributes.append(new_attribute)
         return new_class
 
-    def str(self, indent = ''):
+    def str(self, indent=''):
         s = self.name + ' = {' + '\n'
         s += '    cpp_name = "' + self.cpp_name + '",\n'
         if self.string_id:
@@ -438,13 +439,90 @@ class CppClass:
         for f in self.functions:
             if self.cpp_name == f.name or ('~' + self.cpp_name) == f.name:
                 continue
-            #if re.match(r'^operator', f.name) :
+            # if re.match(r'^operator', f.name) :
             #    continue
             s += '        '
             if not f.isValid():
                 s += '--'
             s += f.str() + ',\n'
         s += '    }' + '\n'
+        s += '},'
+        s = indent + ('\n' + indent).join(s.split('\n'))
+        return s
+
+
+# =======================================================
+#
+# CppEnum
+#
+# =======================================================
+
+
+class CppEnum:
+    def __init__(self):
+        self.name = None
+        self.cpp_name = None
+        self.parent = None
+        self.values = []
+        self.refid = None
+        self.as_class = False
+
+    @classmethod
+    def load_from_xml(cls, xml_memberdef, tree):
+        if xml_memberdef.attrib['prot'] == 'public':
+            if xml_memberdef.attrib['kind'] == 'enum':
+                new_enum = CppEnum()
+                new_enum.cpp_name = xml_memberdef.find('name').text
+                location = xml_memberdef.find('location')
+                if re.search(r'\.cpp$', location.attrib['file']):
+                    return None
+                if re.search(r'^@', new_enum.cpp_name):
+                    return None
+                new_enum.name = new_enum.cpp_name
+                if new_enum.name in lua_typemap.keys():
+                    new_enum.name = lua_typemap[new_enum.name]
+                new_enum.name = new_enum.name.replace(':', '_')
+                for enumvalue in xml_memberdef.iter('enumvalue'):
+                    valname = enumvalue.find('name').text
+                    new_enum.values.append(valname)
+                new_enum.parent = CppEnum.getParentClass(xml_memberdef)
+                if new_enum.parent and re.search(r'^anonymous_namespace', new_enum.parent):
+                    return None
+                new_enum.refid = xml_memberdef.attrib['id']
+                return new_enum
+        return None
+
+    @classmethod
+    def getParentClass(cls, element):
+        parent = element.getparent()
+        if len(parent):
+            if 'kind' in parent.attrib.keys():
+                if parent.attrib['kind'] == 'class' or parent.attrib['kind'] == 'struct':
+                    tmp_cls = CppClass.load_from_xml(parent)
+                    return tmp_cls.cpp_name
+                else:
+                    return CppEnum.getParentClass(parent)
+        return None
+
+    @classmethod
+    def searchCodeLine(cls, tree, refid):
+        lines = tree.xpath("//codeline [@refid='" + refid + "']")
+        if len(lines):
+            return etree.tostring(lines[0], method="text")
+        return None
+
+    def str(self, indent=''):
+        s = self.name + ' = {' + '\n'
+        s += '    cpp_name = "' + self.cpp_name + '",\n'
+        s += '    values = {' + '\n'
+        for v in self.values:
+            v2 = v
+            if self.as_class:
+                v2 = self.cpp_name + '::' + v2
+            if self.parent:
+                v2 = self.parent + '::' + v2
+            s += '        {"' + v + '", "' + v2 + '"},\n'
+        s += '    },' + '\n'
         s += '},'
         s = indent + ('\n' + indent).join(s.split('\n'))
         return s
@@ -462,9 +540,12 @@ def get_xml_files(path):
 
 xml_files = get_xml_files('doxygen/xml')
 all_cpp_classes = []
+all_cpp_enums = []
 string_ids = {}
 int_ids = {}
 typedefs = {}
+
+xml_files = filter(lambda x: re.search(r'_8cpp\.xml', x) == None, xml_files)
 
 for xml_file in xml_files:
     tree = etree.parse(xml_file)
@@ -508,6 +589,25 @@ for xml_file in xml_files:
             int_id_type = tmp2[0][0]
             int_ids[int_id_class] = int_id_type
 
+    # enum
+    members = tree.xpath("//memberdef[@kind='enum']")
+    for member in members:
+        new_enum = CppEnum.load_from_xml(member, tree)
+        if new_enum:
+            all_cpp_enums.append(new_enum)
+
+# parse Enums
+for xml_file in xml_files:
+    tree = etree.parse(xml_file)
+    for e in all_cpp_enums:
+        if not e.as_class:
+            lines = tree.xpath("//codeline[@refid='" + e.refid + "']")
+            if len(lines):
+                line = etree.tostring(lines[0], method="text")
+                if re.match(r'enum\s*class', line):
+                    e.as_class = True
+
+
 for si in string_ids.keys():
     if string_ids[si] not in valid_types:
         valid_types.append(string_ids[si])
@@ -517,12 +617,17 @@ for ii in int_ids.keys():
         valid_types.append(int_ids[ii])
 
 for cls in all_cpp_classes:
-    if  cls.cpp_name in string_ids.keys():
+    if cls.cpp_name in string_ids.keys():
         cls.string_id = string_ids[cls.cpp_name]
-    if  cls.cpp_name in int_ids.keys():
+    if cls.cpp_name in int_ids.keys():
         cls.int_id = int_ids[cls.cpp_name]
 
-print ('classes = {')
+print('classes = {')
 for c in all_cpp_classes:
-    print (c.str('    '))
-print ('}')
+    print(c.str('    '))
+print('}')
+
+print('enums = {')
+for e in all_cpp_enums:
+    print(e.str('    '))
+print('}')

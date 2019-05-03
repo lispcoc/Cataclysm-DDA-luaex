@@ -224,8 +224,18 @@
 #include "map_selector.h"
 #include "profession.h"
 #include "projectile.h"
+#include "pickup.h"
+#include "cata_tiles.h"
+#include "panels.h"
+#include "faction_camp.h"
+#include "sounds.h"
 
 #include "lua/kaguya.hpp"
+
+using namespace catacurses;
+using namespace om_direction;
+using namespace sounds;
+using namespace Pickup;
 
 void init_lua();
 void dummy();
