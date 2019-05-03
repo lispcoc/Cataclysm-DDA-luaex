@@ -237,6 +237,10 @@ using namespace om_direction;
 using namespace sounds;
 using namespace Pickup;
 
+extern std::stringstream lua_output_stream;
+extern std::stringstream lua_error_stream;
+extern bool lua_running_console;
+
 void init_lua();
 void dummy();
 void _autogen_lua_register(kaguya::State &lua);

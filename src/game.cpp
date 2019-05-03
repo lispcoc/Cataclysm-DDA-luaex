@@ -160,6 +160,7 @@
 #endif
 
 #include "_catalua.h"
+#include "_lua_console.h"
 
 #define dbg(x) DebugLog((DebugLevel)(x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
 
@@ -2993,6 +2994,7 @@ void game::debug()
         _( "Spawn Map Extra" ),                 // 36
         _( "Toggle NPC pathfinding on map" ),   // 37
         _( "Quit to Main Menu" ),               // 38
+        _( "Lua Console" ),                     // 39
     } );
     refresh_all();
     switch( action ) {
@@ -3422,6 +3424,10 @@ void game::debug()
                 u.moves = 0;
                 uquit = QUIT_NOSAVED;
             }
+            break;
+        case 39:
+            lua_console console;
+            console.run();
             break;
     }
     catacurses::erase();

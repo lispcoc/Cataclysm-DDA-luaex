@@ -30,6 +30,7 @@ class lua_iuse_actor : iuse_actor
 };
 
 kaguya::State *lua_ptr = nullptr;
+bool lua_running_console = false;
 
 // Keep track of the current mod from which we are executing, so that
 // we know where to load files from.
@@ -37,34 +38,31 @@ std::string lua_file_path;
 
 static std::unique_ptr<uilist> uilist_instance;
 
-void _autogen_lua_global_bindings(kaguya::State &lua);
+std::stringstream lua_output_stream;
+std::stringstream lua_error_stream;
 
-auto dummy_gun_mode = gun_mode();
-template<>
-const gun_mode &string_id<gun_mode>::obj() const
-{
-    return dummy_gun_mode;
-}
-template<>
-bool string_id<gun_mode>::is_valid() const
-{
-    return false;
-}
-template<>
-bool string_id<activity_type>::is_valid() const
-{
-    return false;
-}
+void _autogen_lua_global_bindings(kaguya::State &lua);
 
 void Item_factory::add_actor_lua( iuse_actor *ptr )
 {
     add_actor( ptr );
 }
 
+void game_myPrint( kaguya::VariadicArgType args )
+{
+    for( auto v : args ) {
+        lua_output_stream << v.get<std::string>();
+    }
+    lua_output_stream << std::endl;
+}
 
 void lua_error_handler( int errCode, const char * szError )
 {
     std::string error_str = szError;
+    if( lua_running_console ){
+        lua_error_stream << "Lua error (" << errCode << "): "<< error_str;
+        return;
+    }
     debugmsg( _( "Lua error (%d): %2$s" ), errCode, error_str );
 }
 
@@ -80,6 +78,7 @@ void init_lua()
     _autogen_lua_register(lua);
 
     lua["__cdda_lua_iuse_functions"] = kaguya::NewTable();
+    lua["print"] = kaguya::function(game_myPrint);
     lua.dofile("lua/autoexec.lua");
 }
 
@@ -104,6 +103,9 @@ void lua_loadmod( const std::string &base_path, const std::string &main_file_nam
     }
 }
 
+//
+// Lua global functions
+//
 void register_iuse( const std::string type, const kaguya::LuaRef &f )
 {
     kaguya::LuaTable tbl = get_luastate()["__cdda_lua_iuse_functions"];
@@ -188,6 +190,25 @@ std::string get_omt_id( const overmap &om, const tripoint &p )
 //
 // Dummy functions
 //
+auto dummy_gun_mode = gun_mode();
+template<>
+const gun_mode &string_id<gun_mode>::obj() const
+{
+    return dummy_gun_mode;
+}
+
+template<>
+bool string_id<gun_mode>::is_valid() const
+{
+    return false;
+}
+
+template<>
+bool string_id<activity_type>::is_valid() const
+{
+    return false;
+}
+
 int player::calories_for( const item & ) const
 {
     return 0;
