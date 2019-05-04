@@ -327,7 +327,7 @@ endif
 
 CXXFLAGS += $(WARNINGS) $(DEBUG) $(DEBUGSYMS) $(PROFILE) $(OTHERS) -MMD -MP
 
-BINDIST_EXTRAS += README.md data doc
+BINDIST_EXTRAS += README.md data doc README_LUAEX.txt
 BINDIST    = $(BUILD_PREFIX)cataclysmdda-$(VERSION).tar.gz
 W32BINDIST = $(BUILD_PREFIX)cataclysmdda-$(VERSION).zip
 BINDIST_CMD    = tar --transform=s@^$(BINDIST_DIR)@cataclysmdda-$(VERSION)@ -czvf $(BINDIST) $(BINDIST_DIR)
