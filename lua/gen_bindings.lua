@@ -109,21 +109,15 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
             if data.optional_args then
                 opt_n = arg_n + #data.optional_args
             end
-            --if arg_n ==  opt_n  then
-            --else
-                --func_str = '&' .. cls_cpp_name .. '::' .. cpp_name
-                func_str = cpp_name
-                --KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(                                   \
-                --GENERATE_NAME, CLASS, FNAME, MINARG, MAXARG, create<SIGNATURE>())
-                if cast == '' then
-                    func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
-                else
-                    func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
-                end
-                table.insert(func_str_list, func_str)
-                fn = fn + 1
-                fon = fon + 1
-            --end
+            func_str = cpp_name
+            if cast == '' then
+                func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
+            else
+                func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
+            end
+            table.insert(func_str_list, func_str)
+            fn = fn + 1
+            fon = fon + 1
         end
         str = str .. table.concat(func_str_list, '\n')
         if str ~= '' then
@@ -239,7 +233,11 @@ for _, key in pairs(keys) do
     local value = classes[key]
     local lines = {}
     local constructors = gen_constructors(value.cpp_name, value.new, '    ')
-    table.insert(lines, 'lua["' .. key .. '"].setClass(kaguya::UserdataMetatable<' .. value.cpp_name .. '>()')
+    local inheritance = {value.cpp_name}
+    if value.parent then
+        table.insert(inheritance, value.parent)
+    end
+    table.insert(lines, 'lua["' .. key .. '"].setClass(kaguya::UserdataMetatable<' .. table.concat(inheritance, ', ') .. '>()')
     if constructors ~= nil then
         table.insert(lines, constructors)
     end

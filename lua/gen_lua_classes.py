@@ -384,6 +384,7 @@ class CppClass:
         self.int_id = None
         self.attributes = []
         self.functions = []
+        self.base = None
 
     @classmethod
     def load_from_xml(cls, xml_compounddef):
@@ -402,11 +403,17 @@ class CppClass:
             new_attribute = CppVariable.load_from_xml(member)
             if new_attribute:
                 new_class.attributes.append(new_attribute)
+        # base class
+        s = xml_compounddef.find('basecompoundref')
+        if not s == None and s.text in valid_types:
+            new_class.base = s.text
         return new_class
 
     def str(self, indent=''):
         s = self.name + ' = {' + '\n'
         s += '    cpp_name = "' + self.cpp_name + '",\n'
+        if self.base:
+            s += '    parent = "' + self.base + '",\n'
         if self.string_id:
             s += '    string_id = "' + self.string_id + '",\n'
         if self.int_id:

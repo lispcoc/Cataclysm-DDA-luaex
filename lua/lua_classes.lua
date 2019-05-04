@@ -84,6 +84,7 @@ classes = {
     },
     Character = {
         cpp_name = "Character",
+        parent = "Creature",
         new = {
         },
         attributes = {
@@ -1824,6 +1825,7 @@ classes = {
     },
     monster = {
         cpp_name = "monster",
+        parent = "Creature",
         new = {
             { },
             { "const mtype_id &", },
@@ -2057,6 +2059,7 @@ classes = {
     },
     npc = {
         cpp_name = "npc",
+        parent = "player",
         new = {
             { },
             { "const npc &", },
@@ -2377,6 +2380,7 @@ classes = {
     },
     player = {
         cpp_name = "player",
+        parent = "Character",
         new = {
             { },
             { "const player &", },
