@@ -26,6 +26,25 @@ function gen_constructors(cls_cpp_name, t, indent)
     end
 end
 
+function gen_ref_attributes_wrappar(cls_cpp_name, t, indent)
+    indent = indent or ''
+    local attributes = {}
+    for name, data in pairs(t) do
+        local str = ""
+        if data.reference then
+            if data.static then
+                -- not support
+            else
+                str = indent .. data.type .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self){ return &self->' .. name .. '; }'
+            end
+        end
+        if str ~= "" then
+            table.insert(attributes, str)
+        end
+end
+    return attributes
+end
+
 function gen_attributes(cls_cpp_name, t, indent)
     indent = indent or ''
     attributes = {}
@@ -45,11 +64,7 @@ function gen_attributes(cls_cpp_name, t, indent)
             if data.static then
                 -- not support
             else
-                if data.writable then
-                    --str = indent .. '.addProperty("' .. name .. '", [](' .. cls_cpp_name .. '* self){auto&& tmp = self->' .. name .. '; return tmp;})'
-                else
-                    --str = indent .. '.addProperty("' .. name .. '", [](' .. cls_cpp_name .. '* self){auto&& tmp = self->' .. name .. '; return tmp;})'
-                end
+                str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
             end
         end
         if str ~= "" then
@@ -67,14 +82,10 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
     -- check overloaded functions
     for key, data in ipairs(t) do
         name = data.name
-        if data.static then
-            --not supported
-        else
-            if not functions[name] then
-                functions[name] = {}
-            end
-            table.insert(functions[name], data)
+        if not functions[name] then
+            functions[name] = {}
         end
+        table.insert(functions[name], data)
     end
     for key, data_list in pairs(functions) do
         local str = ''
@@ -88,7 +99,9 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
             all_args = {}
             if not string.match (cpp_name, "^operator") then
                 cast = data.rval .. '('
-                cast = cast .. cls_cpp_name .. '::'
+                if not data.static then
+                    cast = cast .. cls_cpp_name .. '::'
+                end
                 cast = cast .. '*)('
                 if data.optional_args then
                     all_args = TableConcat(data.args, data.optional_args)
@@ -111,9 +124,17 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
             end
             func_str = cpp_name
             if cast == '' then
-                func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
+                if not data.static then
+                    func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
+                else
+                    func_str = 'KAGUYA_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon .. ', ' .. cls_cpp_name .. '::' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
+                end
             else
-                func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
+                if not data.static then
+                    func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
+                else
+                    func_str = 'KAGUYA_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon .. ', ' .. cls_cpp_name .. '::' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
+                end
             end
             table.insert(func_str_list, func_str)
             fn = fn + 1
@@ -134,14 +155,10 @@ function gen_functions(cls_cpp_name, t, indent)
     -- check overloaded functions
     for key, data in ipairs(t) do
         name = data.name
-        if data.static then
-            --not supported
-        else
-            if not functions[name] then
-                functions[name] = {}
-            end
-            table.insert(functions[name], data)
+        if not functions[name] then
+            functions[name] = {}
         end
+        table.insert(functions[name], data)
     end
     for key, data_list in pairs(functions) do
         local str = ''
@@ -155,7 +172,8 @@ function gen_functions(cls_cpp_name, t, indent)
             fon = fon + 1
         end
         if #func_str_list == 1 then
-            str = indent .. '.addFunction("' .. name .. '", '
+            -- todo: bug check
+            str = indent .. '.addOverloadedFunctions("' .. name .. '", '
         else
             str = indent .. '.addOverloadedFunctions("' .. name .. '", '
         end
@@ -247,7 +265,8 @@ for _, key in pairs(keys) do
     local f_str = '_autogen_lua_' .. key .. '_bindings'
     table.insert(autogen_functions, f_str)
 
-    local global_lines = gen_wrappar_functions(value.cpp_name, value.functions, '')
+    local global_lines = gen_wrappar_functions(value.cpp_name, value.functions)
+    global_lines = TableConcat(global_lines, gen_ref_attributes_wrappar(value.cpp_name, value.attributes))
     f = io.open("src/lua/" .. key .. "_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
     f:write(table.concat(global_lines, '\n') .. '\n')

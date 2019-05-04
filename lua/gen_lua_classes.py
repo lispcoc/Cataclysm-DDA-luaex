@@ -86,6 +86,7 @@ blacklist_type = [
     'mon_action_defend',
     'mon_action_death',
     'mon_action_attack',
+    'Attitude',
 ]
 
 blacklist_function = [
@@ -289,13 +290,13 @@ class CppVariable:
 
     def isWritable(self):
         t = CppType(self.type)
-        if t.is_const or t.is_static:
+        if t.is_const or t.is_static or self.isReference():
             return False
         return True
 
     def isReference(self):
         t = CppType(self.type)
-        if t.is_ref or t.is_ptr:
+        if t.is_ref:
             return True
         return False
 
