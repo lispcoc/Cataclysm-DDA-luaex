@@ -2,10 +2,14 @@ dofile("lua/lua_classes.lua")
 dofile("lua/lua_global.lua")
 
 function TableConcat(t1,t2)
-    for i=1,#t2 do
-        t1[#t1+1] = t2[i]
+    local t3 = {}
+    for i=1,#t1 do
+        t3[i] = t1[i]
     end
-    return t1
+    for i=1,#t2 do
+        t3[#t1+i] = t2[i]
+    end
+    return t3
 end
 
 function gen_constructors(cls_cpp_name, t, indent)
@@ -55,6 +59,80 @@ end
     return attributes
 end
 
+function gen_wrappar_functions(cls_cpp_name, t, indent)
+    indent = indent or ''
+    local lines = {}
+    local functions = {}
+    fn = 0
+    -- check overloaded functions
+    for key, data in ipairs(t) do
+        name = data.name
+        if data.static then
+            --not supported
+        else
+            if not functions[name] then
+                functions[name] = {}
+            end
+            table.insert(functions[name], data)
+        end
+    end
+    for key, data_list in pairs(functions) do
+        local str = ''
+        local name = data_list[1].name
+        local cpp_name = data_list[1].cpp_name or name
+        local func_str_list = {}
+        local fon = 0
+        for _, data in ipairs(data_list) do
+            -- generate cast to resolve overloaded function
+            cast = ''
+            all_args = {}
+            if not string.match (cpp_name, "^operator") then
+                cast = data.rval .. '('
+                cast = cast .. cls_cpp_name .. '::'
+                cast = cast .. '*)('
+                if data.optional_args then
+                    all_args = TableConcat(data.args, data.optional_args)
+                else
+                    all_args = data.args 
+                end
+                arg_str = table.concat(all_args, ', ')
+                cast = cast .. arg_str .. ')'
+                if data.const then
+                    cast = cast .. ' const'
+                end
+            end
+            arg_n = 0
+            if data.args then
+                arg_n = #data.args
+            end
+            opt_n = arg_n
+            if data.optional_args then
+                opt_n = arg_n + #data.optional_args
+            end
+            --if arg_n ==  opt_n  then
+            --else
+                --func_str = '&' .. cls_cpp_name .. '::' .. cpp_name
+                func_str = cpp_name
+                --KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(                                   \
+                --GENERATE_NAME, CLASS, FNAME, MINARG, MAXARG, create<SIGNATURE>())
+                if cast == '' then
+                    func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
+                else
+                    func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
+                end
+                table.insert(func_str_list, func_str)
+                fn = fn + 1
+                fon = fon + 1
+            --end
+        end
+        str = str .. table.concat(func_str_list, '\n')
+        if str ~= '' then
+            table.insert(lines, str)
+        end
+    end
+    return lines
+end
+
 function gen_functions(cls_cpp_name, t, indent)
     indent = indent or ''
     lines = {}
@@ -72,34 +150,15 @@ function gen_functions(cls_cpp_name, t, indent)
         end
     end
     for key, data_list in pairs(functions) do
-        str = ''
-        name = data_list[1].name
-        cpp_name = data_list[1].cpp_name or name
-        func_str_list = {}
+        local str = ''
+        local name = data_list[1].name
+        local cpp_name = data_list[1].cpp_name or name
+        local func_str_list = {}
+        local fon = 0
         for _, data in ipairs(data_list) do
-            -- generate cast to resolve overloaded function
-            cast_pre = ''
-            cast_suf = ''
-            if not string.match (cpp_name, "^operator") then
-                cast_pre = 'static_cast<' .. data.rval .. '('
-                cast_pre = cast_pre .. cls_cpp_name .. '::'
-                cast_pre = cast_pre .. '*)('
-                if data.optional_args then
-                    all_args = TableConcat(data.args, data.optional_args)
-                else
-                    all_args = data.args 
-                end
-                arg_str = table.concat(all_args, ', ')
-                cast_pre = cast_pre .. arg_str .. ')'
-                if data.const then
-                    cast_pre = cast_pre .. ' const'
-                end
-                cast_pre = cast_pre .. '>('
-                cast_suf = ')'
-            end
-
-            func_str = cast_pre .. '&' .. cls_cpp_name .. '::' .. cpp_name .. cast_suf
+            func_str = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon .. '()'
             table.insert(func_str_list, func_str)
+            fon = fon + 1
         end
         if #func_str_list == 1 then
             str = indent .. '.addFunction("' .. name .. '", '
@@ -177,21 +236,23 @@ cpp_template_header = {
 autogen_functions = {}
 
 for _, key in pairs(keys) do
-    value = classes[key]
-    lines = {}
+    local value = classes[key]
+    local lines = {}
+    local constructors = gen_constructors(value.cpp_name, value.new, '    ')
     table.insert(lines, 'lua["' .. key .. '"].setClass(kaguya::UserdataMetatable<' .. value.cpp_name .. '>()')
-    constructors = gen_constructors(value.cpp_name, value.new, '    ')
     if constructors ~= nil then
         table.insert(lines, constructors)
     end
     lines = TableConcat(lines, gen_attributes(value.cpp_name, value.attributes, '    '))
     lines = TableConcat(lines, gen_functions(value.cpp_name, value.functions, '    '))
     table.insert(lines, '    );')
-    f_str = '_autogen_lua_' .. key .. '_bindings'
+    local f_str = '_autogen_lua_' .. key .. '_bindings'
     table.insert(autogen_functions, f_str)
 
+    local global_lines = gen_wrappar_functions(value.cpp_name, value.functions, '')
     f = io.open("src/lua/" .. key .. "_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
+    f:write(table.concat(global_lines, '\n') .. '\n')
     f:write('void ' .. f_str .. '(kaguya::State &lua)\n')
     f:write('{\n')
     f:write('    ' .. table.concat(lines, '\n    ') .. '\n')
