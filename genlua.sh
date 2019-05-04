@@ -1,4 +1,2 @@
-cd lua
-python gen_lua_classes.py > lua_classes.lua
-cd ..
-lua lua/gen_bindings.lua > src/lua/lua_bindings.cpp
+python lua-build-scripts/gen_lua_classes.py lua-build-scripts/doxygen/xml > lua/lua_classes.lua
+lua lua-build-scripts/gen_bindings.lua

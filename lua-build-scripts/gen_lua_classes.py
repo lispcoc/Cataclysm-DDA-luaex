@@ -2,6 +2,9 @@ from lxml import etree
 import lxml.html
 import re
 import os
+import sys
+
+cmd_args = sys.argv
 
 valid_types = [
     'bool',
@@ -550,7 +553,7 @@ def get_xml_files(path):
     return xml_files
 
 
-xml_files = get_xml_files('doxygen/xml')
+xml_files = get_xml_files(cmd_args[1])
 all_cpp_classes = []
 all_cpp_enums = []
 string_ids = {}
