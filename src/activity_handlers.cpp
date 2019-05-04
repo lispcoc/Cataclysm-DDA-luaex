@@ -1971,7 +1971,7 @@ void activity_handlers::train_finish( player_activity *act, player *p )
                                             skill_increase_source,
                                             sk.str(),
                                             new_skill_level );
-            get_luastate()["mod_callback"]("on_skill_increased"); // Legacy callback
+            get_luastate()["mod_callback"]( "on_skill_increased" ); // Legacy callback
         } catch( const std::exception &err ) {
             debugmsg( _( "Lua error: %1$s" ), err.what() );
         }

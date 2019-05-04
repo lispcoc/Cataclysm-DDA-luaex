@@ -10262,7 +10262,7 @@ void player::do_read( item &book )
                                                         skill_increase_source,
                                                         skill.str(),
                                                         originalSkillLevel + 1 );
-                        get_luastate()["mod_callback"]("on_skill_increased"); // Legacy callback
+                        get_luastate()["mod_callback"]( "on_skill_increased" ); // Legacy callback
                     } catch( const std::exception &err ) {
                         debugmsg( _( "Lua error: %1$s" ), err.what() );
                     }
@@ -11539,7 +11539,7 @@ void player::practice( const skill_id &id, int amount, int cap )
                                                 skill_increase_source,
                                                 id.str(),
                                                 newLevel );
-                get_luastate()["mod_callback"]("on_skill_increased"); // Legacy callback
+                get_luastate()["mod_callback"]( "on_skill_increased" ); // Legacy callback
             } catch( const std::exception &err ) {
                 debugmsg( _( "Lua error: %1$s" ), err.what() );
             }

@@ -18,7 +18,7 @@ class lua_iuse_actor : iuse_actor
         long use( player &, item &it, bool a, const tripoint &pos ) const override {
             long ret  = 0;
             try {
-                ret = get_luastate()["__cdda_lua_iuse_functions"][type](it, a, pos);
+                ret = get_luastate()["__cdda_lua_iuse_functions"][type]( it, a, pos );
             } catch( const std::exception &err ) {
                 debugmsg( _( "Lua error: %1$s" ), err.what() );
             }
@@ -41,7 +41,7 @@ static std::unique_ptr<uilist> uilist_instance;
 std::stringstream lua_output_stream;
 std::stringstream lua_error_stream;
 
-void _autogen_lua_global_bindings(kaguya::State &lua);
+void _autogen_lua_global_bindings( kaguya::State &lua );
 
 void Item_factory::add_actor_lua( iuse_actor *ptr )
 {
@@ -56,11 +56,11 @@ void game_myPrint( kaguya::VariadicArgType args )
     lua_output_stream << std::endl;
 }
 
-void lua_error_handler( int errCode, const char * szError )
+void lua_error_handler( int errCode, const char *szError )
 {
     std::string error_str = szError;
-    if( lua_running_console ){
-        lua_error_stream << "Lua error (" << errCode << "): "<< error_str;
+    if( lua_running_console ) {
+        lua_error_stream << "Lua error (" << errCode << "): " << error_str;
         return;
     }
     debugmsg( _( "Lua error (%d): %2$s" ), errCode, error_str );
@@ -68,23 +68,23 @@ void lua_error_handler( int errCode, const char * szError )
 
 void init_lua()
 {
-    if(lua_ptr != nullptr){
+    if( lua_ptr != nullptr ) {
         delete lua_ptr;
     }
     lua_ptr = new kaguya::State;
     kaguya::State &lua = *lua_ptr;
-    lua.setErrorHandler(lua_error_handler);
+    lua.setErrorHandler( lua_error_handler );
 
-    _autogen_lua_register(lua);
+    _autogen_lua_register( lua );
 
     lua["__cdda_lua_iuse_functions"] = kaguya::NewTable();
-    lua["print"] = kaguya::function(game_myPrint);
-    lua.dofile("lua/autoexec.lua");
+    lua["print"] = kaguya::function( game_myPrint );
+    lua.dofile( "lua/autoexec.lua" );
 }
 
-kaguya::State& get_luastate()
+kaguya::State &get_luastate()
 {
-    if( lua_ptr == nullptr ){
+    if( lua_ptr == nullptr ) {
         throw std::runtime_error( "Lua State is not found." );
     }
     kaguya::State &lua = *lua_ptr;
@@ -98,7 +98,7 @@ void lua_loadmod( const std::string &base_path, const std::string &main_file_nam
     std::string full_path = base_path + "/" + main_file_name;
     if( file_exist( full_path ) ) {
         lua_file_path = base_path;
-        get_luastate().dofile(full_path);
+        get_luastate().dofile( full_path );
         lua_file_path.clear();
     }
 }
@@ -129,7 +129,7 @@ bool query_yn_wrapper( const std::string &text )
 }
 
 std::string string_input_popup_wrapper( const std::string &title, int width,
-        const std::string &desc )
+                                        const std::string &desc )
 {
     return string_input_popup().title( title ).width( width ).description( desc ).query_string();
 }
@@ -157,19 +157,19 @@ time_duration get_time_duration_wrapper( const int t )
     return time_duration::from_turns( t );
 }
 
-monster *get_monster_at( const tripoint & p )
+monster *get_monster_at( const tripoint &p )
 {
-    return g->critter_at<monster>(p);
+    return g->critter_at<monster>( p );
 }
 
-Creature *get_critter_at( const tripoint & p )
+Creature *get_critter_at( const tripoint &p )
 {
-    return g->critter_at<Creature>(p);
+    return g->critter_at<Creature>( p );
 }
 
-npc *get_npc_at( const tripoint & p )
+npc *get_npc_at( const tripoint &p )
 {
-    return g->critter_at<npc>(p);
+    return g->critter_at<npc>( p );
 }
 
 monster *create_monster( const mtype_id &mon_type, const tripoint &p )

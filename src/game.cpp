@@ -856,7 +856,7 @@ bool game::start_game()
                         pgettext( "memorial_female", "%s began their journey into the Cataclysm." ),
                         u.name );
     try {
-        get_luastate()["mod_callback"]("on_new_player_created");
+        get_luastate()["mod_callback"]( "on_new_player_created" );
     } catch( const std::exception &err ) {
         debugmsg( _( "Lua error: %1$s" ), err.what() );
     }
@@ -1397,19 +1397,19 @@ bool game::do_turn()
     try {
         if( calendar::once_every( 1_days ) ) {
             if( calendar::turn.day_of_year() == 0 ) {
-                get_luastate()["mod_callback"]("on_year_passed");
+                get_luastate()["mod_callback"]( "on_year_passed" );
             }
-            get_luastate()["mod_callback"]("on_day_passed");
+            get_luastate()["mod_callback"]( "on_day_passed" );
         }
 
         if( calendar::once_every( 1_hours ) ) {
-            get_luastate()["mod_callback"]("on_hour_passed");
+            get_luastate()["mod_callback"]( "on_hour_passed" );
         }
 
         if( calendar::once_every( 1_minutes ) ) {
-            get_luastate()["mod_callback"]("on_minute_passed");
+            get_luastate()["mod_callback"]( "on_minute_passed" );
         }
-        get_luastate()["mod_callback"]("on_turn_passed");
+        get_luastate()["mod_callback"]( "on_turn_passed" );
     } catch( const std::exception &err ) {
         debugmsg( _( "Lua error: %1$s" ), err.what() );
     }
@@ -2691,7 +2691,7 @@ void game::load( const save_t &name )
     draw();
 
     try {
-        get_luastate()["mod_callback"]("on_savegame_loaded");
+        get_luastate()["mod_callback"]( "on_savegame_loaded" );
     } catch( const std::exception &err ) {
         debugmsg( _( "Lua error: %1$s" ), err.what() );
     }
