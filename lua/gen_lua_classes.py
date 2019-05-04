@@ -303,6 +303,8 @@ class CppVariable:
     def isValid(self):
         if check_blacklist_type(CppType(self.type).name):
             return False
+        if CppType(self.type).is_constexpr:
+            return False
         return True
 
 # =======================================================
@@ -324,6 +326,7 @@ class CppType:
         self.definition = definition
         self.is_static = False
         self.is_const = False
+        self.is_constexpr = False
         self.is_ptr = False
         self.is_ref = False
         self.name = ''
@@ -337,7 +340,8 @@ class CppType:
         s = re.sub(r'static ', '', s)
         self.is_const = re.search(r'const ', s)
         s = re.sub(r'const ', '', s)
-        self.is_const = self.is_const or re.search(r'constexpr ', s)
+        self.is_constexpr = re.search(r'constexpr ', s)
+        self.is_const = self.is_const or self.is_constexpr
         s = re.sub(r'constexpr ', '', s)
         self.is_ptr = re.search(r'\*', s)
         s = re.sub(r'\s+\*$', '', s)

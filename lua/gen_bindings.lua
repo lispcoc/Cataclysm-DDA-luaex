@@ -31,12 +31,14 @@ function gen_ref_attributes_wrappar(cls_cpp_name, t, indent)
     local attributes = {}
     for name, data in pairs(t) do
         local str = ""
+        local type_def = data.type
         if data.reference then
-            if data.static then
-                -- not support
-            else
-                str = indent .. data.type .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self){ return &self->' .. name .. '; }'
+            if not data.writable then
+                type_def = 'const ' .. type_def
             end
+            str = indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self){ return &self->' .. name .. '; }'
+        elseif data.static then
+            str = indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '*){ return ' .. cls_cpp_name .. '::' .. name .. '; }'
         end
         if str ~= "" then
             table.insert(attributes, str)
@@ -50,22 +52,10 @@ function gen_attributes(cls_cpp_name, t, indent)
     attributes = {}
     for name, data in pairs(t) do
         str = ""
-        if not data.reference then
-            if data.static then
-                -- not support
-            else
-                if data.writable then
-                    str = indent .. '.addProperty("' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ')'
-                else
-                    str = indent .. '.addProperty("' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ')'
-                end
-            end
+        if data.reference or data.static then
+            str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
         else
-            if data.static then
-                -- not support
-            else
-                str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
-            end
+            str = indent .. '.addProperty("' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ')'
         end
         if str ~= "" then
             table.insert(attributes, str)

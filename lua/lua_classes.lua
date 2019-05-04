@@ -2067,7 +2067,7 @@ classes = {
         },
         attributes = {
             need_data = { type = "std::array< std::pair< std::string, overmap_location_str_id >, npc_need::num_needs >", writable = true, reference = false, static = true, },
-            no_goal_point = { type = "tripoint", writable = false, reference = false, static = true, },
+            --no_goal_point = { type = "tripoint", writable = false, reference = false, static = true, },
             myclass = { type = "npc_class_id", writable = true, reference = false, static = false, },
             idz = { type = "std::string", writable = true, reference = false, static = false, },
             miss_ids = { type = "std::vector< mission_type_id >", writable = true, reference = false, static = false, },
@@ -2324,7 +2324,7 @@ classes = {
             { "int", "int", },
         },
         attributes = {
-            invalid_tripoint = { type = "tripoint", writable = false, reference = false, static = true, },
+            --invalid_tripoint = { type = "tripoint", writable = false, reference = false, static = true, },
             radios = { type = "std::vector< radio_tower >", writable = true, reference = false, static = false, },
             vehicles = { type = "std::map< int, om_vehicle >", writable = true, reference = false, static = false, },
             camps = { type = "std::vector< basecamp >", writable = true, reference = false, static = false, },
@@ -3457,7 +3457,7 @@ classes = {
             magazine_well = { type = "units::volume", writable = true, reference = false, static = false, },
             layer = { type = "layer_level", writable = true, reference = false, static = false, },
             insulation_factor = { type = "float", writable = true, reference = false, static = false, },
-            damage_scale = { type = "int", writable = false, reference = false, static = true, },
+            --damage_scale = { type = "int", writable = false, reference = false, static = true, },
         },
         functions = {
             { name = "get_item_type_string", rval = "std::string", args = { }, const = true, static = false, },
