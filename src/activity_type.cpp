@@ -12,6 +12,8 @@
 #include "translations.h"
 #include "player_activity.h"
 
+#include "_catalua.h"
+
 // activity_type functions
 static std::map< activity_id, activity_type > activity_type_all;
 
@@ -87,7 +89,23 @@ void activity_type::call_do_turn( player_activity *act, player *p ) const
 {
     const auto &pair = activity_handlers::do_turn_functions.find( id_ );
     if( pair != activity_handlers::do_turn_functions.end() ) {
+        try {
+            const std::string skill_increase_source = "training";
+            get_luastate()["mod_callback"]( "on_activity_call_do_turn_started",
+                                            act->id().str(),
+                                            p->getID() );
+        } catch( const std::exception &err ) {
+            debugmsg( _( "Lua error: %1$s" ), err.what() );
+        }
         pair->second( act, p );
+        try {
+            const std::string skill_increase_source = "training";
+            get_luastate()["mod_callback"]( "on_activity_call_do_turn_finished",
+                                            act->id().str(),
+                                            p->getID() );
+        } catch( const std::exception &err ) {
+            debugmsg( _( "Lua error: %1$s" ), err.what() );
+        }
     }
 }
 
@@ -95,7 +113,23 @@ bool activity_type::call_finish( player_activity *act, player *p ) const
 {
     const auto &pair = activity_handlers::finish_functions.find( id_ );
     if( pair != activity_handlers::finish_functions.end() ) {
+        try {
+            const std::string skill_increase_source = "training";
+            get_luastate()["mod_callback"]( "on_activity_call_finish_started",
+                                            act->id().str(),
+                                            p->getID() );
+        } catch( const std::exception &err ) {
+            debugmsg( _( "Lua error: %1$s" ), err.what() );
+        }
         pair->second( act, p );
+        try {
+            const std::string skill_increase_source = "training";
+            get_luastate()["mod_callback"]( "on_activity_call_finish_finished",
+                                            act->id().str(),
+                                            p->getID() );
+        } catch( const std::exception &err ) {
+            debugmsg( _( "Lua error: %1$s" ), err.what() );
+        }
         return true;
     }
     return false;

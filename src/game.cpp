@@ -855,6 +855,12 @@ bool game::start_game()
     u.add_memorial_log( pgettext( "memorial_male", "%s began their journey into the Cataclysm." ),
                         pgettext( "memorial_female", "%s began their journey into the Cataclysm." ),
                         u.name );
+    try {
+        get_luastate()["mod_callback"]("on_new_player_created");
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
+
     return true;
 }
 
@@ -2683,6 +2689,12 @@ void game::load( const save_t &name )
 
     u.reset();
     draw();
+
+    try {
+        get_luastate()["mod_callback"]("on_savegame_loaded");
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void game::load_world_modfiles( loading_ui &ui )

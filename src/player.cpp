@@ -95,6 +95,8 @@
 #include "units.h"
 #include "visitable.h"
 
+#include "_catalua.h"
+
 constexpr double SQRT_2 = 1.41421356237309504880;
 
 const double MAX_RECOIL = 3000;
@@ -3339,6 +3341,14 @@ void player::on_dodge( Creature *source, float difficulty )
             melee_attack( *source, false, tec );
         }
     }
+    try {
+        get_luastate()["mod_callback"]( "on_player_dodge",
+                                        getID(),
+                                        source,
+                                        difficulty );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_hit( Creature *source, body_part bp_hit,
@@ -3415,6 +3425,14 @@ void player::on_hit( Creature *source, body_part bp_hit,
             source->add_effect( effect_blind, 2_turns );
         }
     }
+    try {
+        get_luastate()["mod_callback"]( "on_player_hit",
+                                        getID(),
+                                        source,
+                                        bp_hit );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 int player::get_lift_assist() const
@@ -3457,6 +3475,14 @@ void player::on_hurt( Creature *source, bool disturb /*= true*/ )
 
     if( is_dead_state() ) {
         set_killer( source );
+    }
+    try {
+        get_luastate()["mod_callback"]( "on_player_hurt",
+                                        getID(),
+                                        source,
+                                        disturb );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
     }
 }
 
@@ -10229,6 +10255,17 @@ void player::do_read( item &book )
                                           pgettext( "memorial_female", "Reached skill level %1$d in %2$s." ),
                                           skill_level.level(), skill_name );
                     }
+                    try {
+                        const std::string skill_increase_source = "book";
+                        get_luastate()["mod_callback"]( "on_player_skill_increased",
+                                                        getID(),
+                                                        skill_increase_source,
+                                                        skill.str(),
+                                                        originalSkillLevel + 1 );
+                        get_luastate()["mod_callback"]("on_skill_increased"); // Legacy callback
+                    } catch( const std::exception &err ) {
+                        debugmsg( _( "Lua error: %1$s" ), err.what() );
+                    }
                 } else {
                     add_msg( m_good, _( "%s increases their %s level." ), learner->disp_name(), skill_name );
                 }
@@ -11495,6 +11532,17 @@ void player::practice( const skill_id &id, int amount, int cap )
         int newLevel = get_skill_level( id );
         if( is_player() && newLevel > oldLevel ) {
             add_msg( m_good, _( "Your skill in %s has increased to %d!" ), skill_name, newLevel );
+            try {
+                const std::string skill_increase_source = "training";
+                get_luastate()["mod_callback"]( "on_player_skill_increased",
+                                                getID(),
+                                                skill_increase_source,
+                                                id.str(),
+                                                newLevel );
+                get_luastate()["mod_callback"]("on_skill_increased"); // Legacy callback
+            } catch( const std::exception &err ) {
+                debugmsg( _( "Lua error: %1$s" ), err.what() );
+            }
         }
         if( is_player() && newLevel > cap ) {
             //inform player immediately that the current recipe can't be used to train further
@@ -12713,26 +12761,62 @@ bool player::has_item_with_flag( const std::string &flag, bool need_charges ) co
 void player::on_mutation_gain( const trait_id &mid )
 {
     morale->on_mutation_gain( mid );
+    try {
+        get_luastate()["mod_callback"]( "on_player_mutation_gain",
+                                        getID(),
+                                        mid.str() );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_mutation_loss( const trait_id &mid )
 {
     morale->on_mutation_loss( mid );
+    try {
+        get_luastate()["mod_callback"]( "on_player_mutation_loss",
+                                        getID(),
+                                        mid.str() );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_stat_change( const std::string &stat, int value )
 {
     morale->on_stat_change( stat, value );
+    try {
+        get_luastate()["mod_callback"]( "on_player_stat_change",
+                                        getID(),
+                                        stat,
+                                        value );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_item_wear( const item &it )
 {
     morale->on_item_wear( it );
+    try {
+        get_luastate()["mod_callback"]( "on_player_item_wear",
+                                        getID(),
+                                        it );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_item_takeoff( const item &it )
 {
     morale->on_item_takeoff( it );
+    try {
+        get_luastate()["mod_callback"]( "on_player_item_takeoff",
+                                        getID(),
+                                        it );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_worn_item_washed( const item &it )
@@ -12752,12 +12836,28 @@ void player::on_effect_int_change( const efftype_id &eid, int intensity, body_pa
     }
 
     morale->on_effect_int_change( eid, intensity, bp );
+    try {
+        get_luastate()["mod_callback"]( "on_player_effect_int_change",
+                                        getID(),
+                                        eid.str(),
+                                        intensity,
+                                        bp );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_mission_assignment( mission &new_mission )
 {
     active_missions.push_back( &new_mission );
     set_active_mission( new_mission );
+    try {
+        get_luastate()["mod_callback"]( "on_player_mission_assignment",
+                                        getID(),
+                                        new_mission.get_id() );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void player::on_mission_finished( mission &cur_mission )
@@ -12782,6 +12882,13 @@ void player::on_mission_finished( mission &cur_mission )
         } else {
             active_mission = active_missions.front();
         }
+    }
+    try {
+        get_luastate()["mod_callback"]( "on_player_mission_finished",
+                                        getID(),
+                                        cur_mission.get_id() );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
     }
 }
 

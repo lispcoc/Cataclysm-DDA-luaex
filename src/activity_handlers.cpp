@@ -77,6 +77,8 @@
 #include "string_id.h"
 #include "units.h"
 
+#include "_catalua.h"
+
 class npc;
 
 #define dbg(x) DebugLog((DebugLevel)(x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
@@ -1961,6 +1963,17 @@ void activity_handlers::train_finish( player_activity *act, player *p )
             p->add_memorial_log( pgettext( "memorial_male", "Reached skill level %1$d in %2$s." ),
                                  pgettext( "memorial_female", "Reached skill level %1$d in %2$s." ),
                                  new_skill_level, skill_name );
+        }
+        try {
+            const std::string skill_increase_source = "training";
+            get_luastate()["mod_callback"]( "on_player_skill_increased",
+                                            p->getID(),
+                                            skill_increase_source,
+                                            sk.str(),
+                                            new_skill_level );
+            get_luastate()["mod_callback"]("on_skill_increased"); // Legacy callback
+        } catch( const std::exception &err ) {
+            debugmsg( _( "Lua error: %1$s" ), err.what() );
         }
         act->set_to_null();
         return;
