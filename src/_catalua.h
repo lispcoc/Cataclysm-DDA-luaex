@@ -261,5 +261,6 @@ Creature *get_critter_at( const tripoint & p );
 npc *get_npc_at( const tripoint & p );
 monster *create_monster( const mtype_id &mon_type, const tripoint &p );
 std::string get_omt_id( const overmap &om, const tripoint &p );
+const ter_t &get_terrain_type( int id );
 
 #endif

@@ -17,8 +17,15 @@ class lua_iuse_actor : iuse_actor
         void load( JsonObject & ) override {}
         long use( player &, item &it, bool a, const tripoint &pos ) const override {
             long ret  = 0;
+            kaguya::State &lua = get_luastate();
+            
             try {
-                ret = get_luastate()["__cdda_lua_iuse_functions"][type]( &it, a, pos );
+                lua["__cdda_lua_iuse_functions"]["__tmpret"] = lua["__cdda_lua_iuse_functions"][type]( &it, a, pos );
+                try {
+                    ret = lua["__cdda_lua_iuse_functions"]["__tmpret"];
+                } catch( const std::exception & ) {
+                    // do nothing
+                }
             } catch( const std::exception &err ) {
                 debugmsg( _( "Lua error: %1$s" ), err.what() );
             }
@@ -185,6 +192,11 @@ monster *create_monster( const mtype_id &mon_type, const tripoint &p )
 std::string get_omt_id( const overmap &om, const tripoint &p )
 {
     return om.get_ter( p ).id().str();
+}
+
+const ter_t &get_terrain_type( int id )
+{
+    return ter_id( id ).obj();
 }
 
 //
