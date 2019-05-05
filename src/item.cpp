@@ -194,9 +194,10 @@ item::item( const itype *type, time_point turn, long qty ) : type( type ), bday(
             emplace_back( type->magazine->default_ammo, calendar::turn, type->magazine->count );
         }
 
-    } else if( get_comestible() ) {
-        active = is_food();
+    } else if( has_temperature() || goes_bad() ) {
+        active = true;
         last_temp_check = bday;
+        last_rot_check = bday;
 
     } else if( type->tool ) {
         if( ammo_remaining() && ammo_type() ) {
@@ -254,6 +255,7 @@ item::item( const recipe *rec, long qty, std::list<item> items )
     if( is_food() ) {
         active = true;
         last_temp_check = bday;
+        last_rot_check = bday;
         if( goes_bad() ) {
             const item *most_rotten = get_most_rotten_component( *this );
             if( most_rotten ) {
@@ -1085,7 +1087,7 @@ std::string item::info( std::vector<iteminfo> &info, const iteminfo_query *parts
                                           to_hours<int>( age() ) ) );
 
                 const item *food = is_food_container() ? &contents.front() : this;
-                if( goes_bad() ) {
+                if( food->goes_bad() ) {
                     info.push_back( iteminfo( "BASE", _( "age (turns): " ),
                                               "", iteminfo::lower_is_better,
                                               to_turns<int>( food->age() ) ) );
@@ -1102,7 +1104,7 @@ std::string item::info( std::vector<iteminfo> &info, const iteminfo_query *parts
                                               "", iteminfo::lower_is_better,
                                               to_turns<int>( food->get_shelf_life() ) ) );
                 }
-                if( has_temperature() || is_food_container() ) {
+                if( food->has_temperature() ) {
                     info.push_back( iteminfo( "BASE", _( "Temp: " ), "", iteminfo::lower_is_better,
                                               food->temperature ) );
                     info.push_back( iteminfo( "BASE", _( "Spec ener: " ), "", iteminfo::lower_is_better,
@@ -1297,7 +1299,7 @@ std::string item::info( std::vector<iteminfo> &info, const iteminfo_query *parts
             }
 
             const auto &ammo = *ammo_data()->ammo;
-            if( ammo_data()->ammo.has_value() ) {
+            if( !ammo.damage.empty() || ammo.prop_damage || ammo.force_stat_display ) {
                 if( !ammo.damage.empty() ) {
                     if( parts->test( iteminfo_parts::AMMO_DAMAGE_VALUE ) ) {
                         info.emplace_back( "AMMO", _( "<bold>Damage</bold>: " ), "",
@@ -1310,8 +1312,8 @@ std::string item::info( std::vector<iteminfo> &info, const iteminfo_query *parts
                                            *ammo.prop_damage );
                     }
                 } else {
-                    info.emplace_back( "AMMO", _( "<bold>No damage change</bold>" ), "",
-                                       iteminfo::no_newline );
+                    info.emplace_back( "AMMO", _( "<bold>Damage multiplier</bold>: " ), "",
+                                       iteminfo::no_newline | iteminfo::is_decimal, 1.0 );
                 }
                 if( parts->test( iteminfo_parts::AMMO_DAMAGE_AP ) ) {
                     info.emplace_back( "AMMO", space + _( "Armor-pierce: " ),
@@ -2943,37 +2945,9 @@ std::string item::tname( unsigned int quantity, bool with_prefix, unsigned int t
 
     if( ( damage() != 0 || ( get_option<bool>( "ITEM_HEALTH_BAR" ) && is_armor() ) ) && !is_null() &&
         with_prefix ) {
-        if( damage() < 0 )  {
-            if( get_option<bool>( "ITEM_HEALTH_BAR" ) ) {
-                damtext = "<color_" + string_from_color( damage_color() ) + ">" + damage_symbol() + " </color>";
-                truncate_override = damtext.length() - 3;
-            } else if( is_gun() ) {
-                damtext = pgettext( "damage adjective", "accurized " );
-            } else {
-                damtext = pgettext( "damage adjective", "reinforced " );
-            }
-        } else if( typeId() == "corpse" ) {
-            if( damage() > 0 ) {
-                switch( damage_level( 4 ) ) {
-                    case 1:
-                        damtext = pgettext( "damage adjective", "bruised " );
-                        break;
-                    case 2:
-                        damtext = pgettext( "damage adjective", "damaged " );
-                        break;
-                    case 3:
-                        damtext = pgettext( "damage adjective", "mangled " );
-                        break;
-                    default:
-                        damtext = pgettext( "damage adjective", "pulped " );
-                        break;
-                }
-            }
-        } else if( get_option<bool>( "ITEM_HEALTH_BAR" ) ) {
-            damtext = "<color_" + string_from_color( damage_color() ) + ">" + damage_symbol() + " </color>";
+        damtext = durability_indicator();
+        if( get_option<bool>( "ITEM_HEALTH_BAR" ) ) {
             truncate_override = damtext.length() - 3;
-        } else {
-            damtext = string_format( "%s ", get_base_material().dmg_adj( damage_level( 4 ) ) );
         }
     }
     if( !faults.empty() ) {
@@ -3691,6 +3665,8 @@ int item::get_quality( const quality_id &id ) const
     if( itm.is_ammo() ) {
             auto &ammo_types = itm.type->ammo->type;
             return ammo_types.find( ammo_type() ) != ammo_types.end();
+        } else if( itm.is_magazine() ) {
+            return itm.ammo_type() == ammo_type();
         } else if( itm.is_toolmod() ) {
             return true;
         }
@@ -3908,15 +3884,20 @@ int get_hourly_rotpoints_at_temp( const int temp )
 
 void item::calc_rot( time_point time )
 {
+    if( !goes_bad() ) {
+        return;
+    }
     // Avoid needlessly calculating already rotten things.  Corpses should
     // always rot away and food rots away at twice the shelf life.  If the food
     // is in a sealed container they won't rot away, this avoids needlessly
     // calculating their rot in that case.
     if( !is_corpse() && get_relative_rot() > 2.0 ) {
+        last_rot_check = time;
         return;
     }
 
     if( item_tags.count( "FROZEN" ) ) {
+        last_rot_check = time;
         return;
     }
     // rot modifier
@@ -3925,10 +3906,8 @@ void item::calc_rot( time_point time )
         factor = 0.75;
     }
 
-
-
     // bday and/or last_rot_check might be zero, if both are then we want calendar::start
-    const time_point since = std::max( {bday, last_rot_check, ( time_point ) calendar::start} );
+    const time_point since = std::max( {last_rot_check, ( time_point ) calendar::start} );
 
     // simulation of different age of food at the start of the game and good/bad storage
     // conditions by applying starting variation bonus/penalty of +/- 20% of base shelf-life
@@ -3942,7 +3921,7 @@ void item::calc_rot( time_point time )
     time_duration time_delta = time - since;
     rot += factor * time_delta / 1_hours * get_hourly_rotpoints_at_temp( kelvin_to_fahrenheit(
                 0.00001 * temperature ) ) * 1_turns;
-    last_rot_check = calendar::turn;
+    last_rot_check = time;
 }
 
 void item::calc_rot_while_processing( time_duration processing_duration )
@@ -4450,7 +4429,11 @@ nc_color item::damage_color() const
         case 3:
             return c_light_red;
         case 4:
-            return c_red;
+            if( damage() >= max_damage() ) {
+                return c_dark_gray;
+            } else {
+                return c_red;
+            }
     }
 }
 
@@ -4468,8 +4451,56 @@ std::string item::damage_symbol() const
         case 3:
             return _( R"(\.)" );
         case 4:
-            return _( R"(..)" );
+            if( damage() >= max_damage() ) {
+                return _( R"(XX)" );
+            } else {
+                return _( R"(..)" );
+            }
+
     }
+}
+
+std::string item::durability_indicator( bool include_intact ) const
+{
+    std::string outputstring;
+
+    if( damage() < 0 )  {
+        if( get_option<bool>( "ITEM_HEALTH_BAR" ) ) {
+            outputstring = "<color_" + string_from_color( damage_color() ) + ">" + damage_symbol() +
+                           " </color>";
+        } else if( is_gun() ) {
+            outputstring = pgettext( "damage adjective", "accurized " );
+        } else {
+            outputstring = pgettext( "damage adjective", "reinforced " );
+        }
+    } else if( typeId() == "corpse" ) {
+        if( damage() > 0 ) {
+            switch( damage_level( 4 ) ) {
+                case 1:
+                    outputstring = pgettext( "damage adjective", "bruised " );
+                    break;
+                case 2:
+                    outputstring = pgettext( "damage adjective", "damaged " );
+                    break;
+                case 3:
+                    outputstring = pgettext( "damage adjective", "mangled " );
+                    break;
+                default:
+                    outputstring = pgettext( "damage adjective", "pulped " );
+                    break;
+            }
+        }
+    } else if( get_option<bool>( "ITEM_HEALTH_BAR" ) ) {
+        outputstring = "<color_" + string_from_color( damage_color() ) + ">" + damage_symbol() +
+                       " </color>";
+    } else {
+        outputstring = string_format( "%s ", get_base_material().dmg_adj( damage_level( 4 ) ) );
+        if( include_intact && outputstring == " " ) {
+            outputstring = _( "fully intact " );
+        }
+    }
+
+    return  outputstring;
 }
 
 const std::set<itype_id> &item::repaired_with() const
@@ -7033,13 +7064,20 @@ void item::process_temperature_rot( int temp, float insulation, const tripoint p
                                     player *carrier )
 {
     const time_point now = calendar::turn;
+
+    // if player debug menu'd the time backward it breaks stuff, just reset the
+    // last_temp_check and last_rot_check in this case
+    if( now - last_temp_check < 0_turns ) {
+        reset_temp_check();
+        last_rot_check = now;
+        return;
+    }
+
     bool carried = carrier != nullptr && carrier->has_item( *this );
 
     // process temperature and rot at most once every 100_turns (10 min)
-    // If the item has had its temperature/rot set the two can be out of sync
-    // Rot happens slower than temperature changes so for most part last_temp_check dominates
     // note we're also gated by item::processing_speed
-    time_duration smallest_interval = 100_turns;
+    time_duration smallest_interval = 10_minutes;
     if( now - last_temp_check < smallest_interval ) {
         // Could be newly created item.
         if( specific_energy < 0 ) {
@@ -7052,22 +7090,15 @@ void item::process_temperature_rot( int temp, float insulation, const tripoint p
         return;
     }
 
-    // if player debug menu'd the time backward it breaks stuff, just reset the
-    // last_temp_check in this case
-    if( now - last_temp_check < 0_turns ) {
-        reset_temp_check();
-        return;
-    }
-
     // body heat increases inventory temperature by 5F
     // This is apllied separately in many places since we may use the unmodified enviroment temperature from get_cur_weather_gen
     if( carried ) {
         insulation *= 1.5; // clothing provides inventory some level of insulation
     }
 
-    time_point time = last_temp_check;
+    time_point time = std::min( { last_rot_check, last_temp_check } );
 
-    if( now - last_temp_check > 1_hours ) {
+    if( now - time > 1_hours ) {
         // This code is for items that were left out of reality bubble for long time
 
         const auto &wgen = g->get_cur_weather_gen();
@@ -7076,8 +7107,15 @@ void item::process_temperature_rot( int temp, float insulation, const tripoint p
         auto local_mod = g->new_game ? 0 : g->m.temperature( local );
         const auto temp_modify = ( !g->new_game ) && ( g->m.ter( local ) == t_rootcellar );
 
-        int enviroment_mod = get_heat_radiation( pos, false );
-        enviroment_mod += get_convection_temperature( pos );
+        int enviroment_mod;
+        // Toilets and vending machines will try to get the heat radiation and convection during mapgen and segfault.
+        // So lets not take them into account for items that were created before calendar::start
+        if( to_turn<int>( last_temp_check ) > to_turn<int>( calendar::start ) ) {
+            enviroment_mod = get_heat_radiation( pos, false );
+            enviroment_mod += get_convection_temperature( pos );
+        } else {
+            enviroment_mod = 0;
+        }
 
         if( carried ) {
             local_mod += 5; // body heat increases inventory temperature
@@ -7099,18 +7137,18 @@ void item::process_temperature_rot( int temp, float insulation, const tripoint p
             env_temperature = ( temp_modify * AVERAGE_ANNUAL_TEMPERATURE ) + ( !temp_modify * env_temperature );
 
             // Calculate item temperature from enviroment temperature
-            if( now - time < 2_days ) {
-                calc_temp( env_temperature, insulation, time );
-            } else {
-                // There is no point in doing the proper temperature calculations for too long times
-                // Just set the item to enviroment temperature. This temperature won't show for the player and is used only for rotting.
-                temperature = env_temperature;
+            // If the time was more than 2 d ago just set the item to enviroment temperature
+            if( now - time > 2_days ) {
+                // This value shouldn't be there anymore after the loop is done so we don't bother with the set_item_temperature()
+                temperature = static_cast<int>( 100000 * temp_to_kelvin( env_temperature ) );
                 last_temp_check = time;
+            } else if( time - last_temp_check >  smallest_interval ) {
+                calc_temp( env_temperature, insulation, time );
             }
 
 
             // Calculate item rot from item temperature
-            if( goes_bad() && time - last_rot_check >  smallest_interval ) {
+            if( time - last_rot_check >  smallest_interval ) {
                 calc_rot( time );
 
                 if( has_rotten_away() || ( is_corpse() && rot > 10_days ) ) {
@@ -7130,6 +7168,12 @@ void item::process_temperature_rot( int temp, float insulation, const tripoint p
         }
         calc_temp( temp, insulation, now );
         calc_rot( now );
+        return;
+    }
+
+    // Some new items can evade all the above. Set them here.
+    if( specific_energy < 0 ) {
+        set_item_temperature( temp_to_kelvin( temp ) );
     }
 }
 
@@ -7971,10 +8015,10 @@ std::string item::type_name( unsigned int quantity ) const
         } else {
             if( skinned && !f_dressed && !quartered ) {
                 return string_format( npgettext( "item name", "skinned %s corpse of %s", "skinned %s corpses of %s",
-                                                 quantity ) );
+                                                 quantity ), corpse->nname(), corpse_name );
             } else if( skinned && f_dressed && !quartered ) {
                 return string_format( npgettext( "item name", "skinned %s carcass of %s",
-                                                 "skinned %s carcasses of %s", quantity ) );
+                                                 "skinned %s carcasses of %s", quantity ), corpse->nname(), corpse_name );
             } else            if( f_dressed && !quartered && !skinned ) {
                 return string_format( npgettext( "item name", "%s carcass of %s",
                                                  "%s carcasses of %s", quantity ),

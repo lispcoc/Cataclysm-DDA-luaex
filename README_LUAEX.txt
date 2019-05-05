@@ -1,7 +1,7 @@
 Cataclysm: DDA Lua Extension
 
 ■サポートVersion
-0.D-8902相当
+0.D-8907相当
 
 ■はじめに
 本ファイルはCataclysm: DDA(CDDA)のLuaサポート機能(バージョン0.D開発版で削除)を復活・拡張したMOD(独自ビルド)です。
@@ -27,7 +27,7 @@ cataclysm-tiles(.exe)からゲームを開始してください。
 
 ■リンク
 ・GitHubリポジトリ
-  https://github.com/lispcoc/Cataclysm-DDA/tree/lua-extention
+  https://github.com/lispcoc/Cataclysm-DDA/tree/lua-extension
 
 ■Luaサポートの状況について(MOD開発者向け)
 ※執筆中

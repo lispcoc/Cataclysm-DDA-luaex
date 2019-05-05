@@ -12,7 +12,7 @@ global_functions = {
     { name = "string_input_popup", cpp_name = "string_input_popup_wrapper", rval = "std::string", args = { "const std::string", "int", "const std::string" }, },
     { name = "create_uimenu", cpp_name = "create_uilist_no_cancel", rval = "uilist *", args = {}, },
     { name = "create_uilist", rval = "uilist *", args = {}, },
-    { name = "rng", cpp_name = "static_cast<long(*)(long,long)>(&rng)", rval = "long", args = {"long", "long"}, },
+    { name = "rng", cpp_name = "static_cast<int(*)(int,int)>(&rng)", rval = "int", args = {"int", "int"}, },
     { name = "one_in", rval = "bool", args = {"int", }, },
     { name = "distance", cpp_name = "static_cast<int(*)(int,int,int,int)>(&rl_dist)", rval = "int", args = {"int", "int", "int", "int"}, },
     { name = "trig_dist", cpp_name = "static_cast<float (*)(int,int,int,int)>(&trig_dist)", rval = "float", args = {"int", "int", "int", "int"}, },
