@@ -27,7 +27,7 @@ cataclysm-tiles(.exe)からゲームを開始してください。
 
 ■リンク
 ・GitHubリポジトリ
-  https://github.com/lispcoc/Cataclysm-DDA/tree/lua-extention
+  https://github.com/lispcoc/Cataclysm-DDA/tree/lua-extension
 
 ■Luaサポートの状況について(MOD開発者向け)
 ※執筆中
