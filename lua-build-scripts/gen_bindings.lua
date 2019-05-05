@@ -87,6 +87,13 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
             if true then
                 local tmp_rval = string.gsub(data.rval, "%&$", "*")
                 local tmp_conv_ref = (tmp_rval ~= data.rval)
+                if data.rval == '' then
+                    if cpp_name == 'operator int' then
+                        tmp_rval = 'int'
+                    else
+                        break
+                    end
+                end
                 local wrappar_func_name = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon
                 func_str = tmp_rval .. ' ' .. wrappar_func_name .. '(' .. cls_cpp_name .. '* self'
                 local an = 0
