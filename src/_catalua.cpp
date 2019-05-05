@@ -18,7 +18,7 @@ class lua_iuse_actor : iuse_actor
         long use( player &, item &it, bool a, const tripoint &pos ) const override {
             long ret  = 0;
             try {
-                ret = get_luastate()["__cdda_lua_iuse_functions"][type]( it, a, pos );
+                ret = get_luastate()["__cdda_lua_iuse_functions"][type]( &it, a, pos );
             } catch( const std::exception &err ) {
                 debugmsg( _( "Lua error: %1$s" ), err.what() );
             }
