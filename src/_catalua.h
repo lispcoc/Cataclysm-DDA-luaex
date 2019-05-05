@@ -52,7 +52,6 @@
 #include "scenario.h"
 #include "ballistics.h"
 #include "gamemode.h"
-#include "mingw.thread.h"
 #include "scent_map.h"
 #include "basecamp.h"
 #include "gates.h"
