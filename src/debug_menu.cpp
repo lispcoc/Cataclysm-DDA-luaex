@@ -60,6 +60,8 @@
 #include "rng.h"
 #include "signal.h"
 
+#include "_catalua.h"
+#include "_lua_console.h"
 #define dbg(x) DebugLog((DebugLevel)(x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
 
 namespace debug_menu
@@ -105,7 +107,8 @@ enum debug_menu_index {
     DEBUG_MAP_EXTRA,
     DEBUG_DISPLAY_NPC_PATH,
     DEBUG_QUIT_NOSAVE,
-    DEBUG_TEST_WEATHER
+    DEBUG_TEST_WEATHER,
+    DEBUG_LUA_CONSOLE
 };
 
 class mission_debug
@@ -208,7 +211,8 @@ static int debug_menu_uilist()
         uilist_entry( 2, true, 'p', _( "Player..." ) ),
         uilist_entry( 3, true, 't', _( "Teleport..." ) ),
         uilist_entry( 4, true, 'm', _( "Map..." ) ),
-        uilist_entry( 5, true, 'i', _( "Info..." ) )
+        uilist_entry( 5, true, 'i', _( "Info..." ) ),
+        uilist_entry( DEBUG_LUA_CONSOLE, true, 'l', _( "Lua Console" ) )
     };
     while( true ) {
         const int group = uilist(
@@ -236,6 +240,8 @@ static int debug_menu_uilist()
             case 5:
                 action = info_uilist();
                 break;
+            case DEBUG_LUA_CONSOLE:
+                action = DEBUG_LUA_CONSOLE;
             default:
                 return group;
         }
@@ -1315,8 +1321,15 @@ void debug()
                 }
                 break;
             case DEBUG_TEST_WEATHER:
-                weather_generator weathergen;
-                weathergen.test_weather();
+                {
+                    weather_generator weathergen;
+                    weathergen.test_weather();
+                }
+                break;
+            case DEBUG_LUA_CONSOLE: {
+                    lua_console console;
+                    console.run();
+                }
                 break;
         }
         catacurses::erase();
