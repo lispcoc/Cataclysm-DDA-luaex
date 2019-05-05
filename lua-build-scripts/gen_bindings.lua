@@ -84,111 +84,67 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
         local func_str_list = {}
         local fon = 0
         for _, data in ipairs(data_list) do
-            if true then
-                local tmp_rval = string.gsub(data.rval, "%&$", "*")
-                local tmp_conv_ref = (tmp_rval ~= data.rval)
-                if data.rval == '' then
-                    if cpp_name == 'operator int' then
-                        tmp_rval = 'int'
-                    else
-                        break
-                    end
-                end
-                local wrappar_func_name = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon
-                func_str = tmp_rval .. ' ' .. wrappar_func_name .. '(' .. cls_cpp_name .. '* self'
-                local an = 0
-                local args_str_t_1 = {}
-                local args_str_t_2 = {}
-                local self_def = 'self'
-                if data.const then
-                    self_def = 'static_cast<const ' .. cls_cpp_name .. '*>(self)'
-                end
-                for _, a in ipairs(data.args) do
-                    table.insert(args_str_t_1, a .. ' v' .. an)
-                    table.insert(args_str_t_2, 'v' .. an)
-                    an = an + 1
-                end
-                if #data.args >= 1 then
-                    func_str = func_str .. ', '
-                end
-                func_str = func_str .. table.concat(args_str_t_1, ', ')
-                local args_str = table.concat(args_str_t_2, ', ')
-                if data.optional_args then
-                    func_str = func_str .. ', kaguya::VariadicArgType args){\n'
-                    for i = 1, #data.optional_args do
-                        func_str = func_str .. indent .. 'if( args.size() >= ' .. (#data.optional_args - i + 1) .. ' ){\n'
-                        func_str = func_str .. indent .. indent
-                        if data.rval ~= 'void' then
-                            func_str = func_str  .. 'return '
-                            if tmp_conv_ref then
-                                func_str = func_str  .. '&'
-                            end
-                        end
-                        func_str = func_str  .. self_def .. '->' .. cpp_name .. '('
-                        local opt_args_str_t = {}
-                        for j = 1, (#data.optional_args - i + 1) do
-                            table.insert(opt_args_str_t, 'args[' .. (j - 1) .. '].get<' .. data.optional_args[j] .. '>()')
-                        end
-                        func_str = func_str .. table.concat(TableConcat(args_str_t_2, opt_args_str_t), ', ')
-                        func_str = func_str .. ');\n'
-                        func_str = func_str .. indent .. '}\n'
-                    end
+            local tmp_rval = string.gsub(data.rval, "%&$", "*")
+            local tmp_conv_ref = (tmp_rval ~= data.rval)
+            if data.rval == '' then
+                if cpp_name == 'operator int' then
+                    tmp_rval = 'int'
                 else
-                    func_str = func_str .. '){\n'
-                end
-                func_str = func_str .. indent
-                if data.rval ~= 'void' then
-                    func_str = func_str  .. 'return '
-                    if tmp_conv_ref then
-                        func_str = func_str  .. '&'
-                    end
-                end
-                func_str = func_str .. self_def .. '->' .. cpp_name .. '(' .. args_str .. ');\n'
-                func_str = func_str .. '}'
-            else
-                -- generate cast to resolve overloaded function
-                cast = ''
-                all_args = {}
-                if not string.match (cpp_name, "^operator") then
-                    cast = data.rval .. '('
-                    if not data.static then
-                        cast = cast .. cls_cpp_name .. '::'
-                    end
-                    cast = cast .. '*)('
-                    if data.optional_args then
-                        all_args = TableConcat(data.args, data.optional_args)
-                    else
-                        all_args = data.args 
-                    end
-                    arg_str = table.concat(all_args, ', ')
-                    cast = cast .. arg_str .. ')'
-                    if data.const then
-                        cast = cast .. ' const'
-                    end
-                end
-                arg_n = 0
-                if data.args then
-                    arg_n = #data.args
-                end
-                opt_n = arg_n
-                if data.optional_args then
-                    opt_n = arg_n + #data.optional_args
-                end
-                func_str = cpp_name
-                if cast == '' then
-                    if not data.static then
-                        func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
-                    else
-                        func_str = 'KAGUYA_FUNCTION_OVERLOADS(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon .. ', ' .. cls_cpp_name .. '::' .. func_str ..', ' .. arg_n ..',' .. opt_n ..')'
-                    end
-                else
-                    if not data.static then
-                        func_str = 'KAGUYA_MEMBER_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon ..', ' .. cls_cpp_name .. ', ' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
-                    else
-                        func_str = 'KAGUYA_FUNCTION_OVERLOADS_INTERNAL(' .. cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon .. ', ' .. cls_cpp_name .. '::' .. func_str ..', ' .. arg_n ..',' .. opt_n ..', (create<' .. cast .. '>()))'
-                    end
+                    break
                 end
             end
+            local wrappar_func_name = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon
+            local func_str = tmp_rval .. ' ' .. wrappar_func_name .. '('
+            local an = 0
+            local args_str_t_1 = {cls_cpp_name .. '* self'}
+            local args_str_t_2 = {}
+            local self_def = 'self->'
+            if cls_cpp_name == '' then
+                self_def = ''
+                args_str_t_1 = {}
+            elseif data.const then
+                self_def = 'static_cast<const ' .. cls_cpp_name .. '*>(self)->'
+            end
+            for _, a in ipairs(data.args) do
+                table.insert(args_str_t_1, a .. ' v' .. an)
+                table.insert(args_str_t_2, 'v' .. an)
+                an = an + 1
+            end
+            if data.optional_args then
+                table.insert(args_str_t_1, 'kaguya::VariadicArgType args')
+            end
+            func_str = func_str .. table.concat(args_str_t_1, ', ')
+            func_str = func_str .. '){\n'
+            local args_str = table.concat(args_str_t_2, ', ')
+            if data.optional_args then
+                for i = 1, #data.optional_args do
+                    func_str = func_str .. indent .. 'if( args.size() >= ' .. (#data.optional_args - i + 1) .. ' ){\n'
+                    func_str = func_str .. indent .. indent
+                    if data.rval ~= 'void' then
+                        func_str = func_str  .. 'return '
+                        if tmp_conv_ref then
+                            func_str = func_str  .. '&'
+                        end
+                    end
+                    func_str = func_str  .. self_def .. cpp_name .. '('
+                    local opt_args_str_t = {}
+                    for j = 1, (#data.optional_args - i + 1) do
+                        table.insert(opt_args_str_t, 'args[' .. (j - 1) .. '].get<' .. data.optional_args[j] .. '>()')
+                    end
+                    func_str = func_str .. table.concat(TableConcat(args_str_t_2, opt_args_str_t), ', ')
+                    func_str = func_str .. ');\n'
+                    func_str = func_str .. indent .. '}\n'
+                end
+            end
+            func_str = func_str .. indent
+            if data.rval ~= 'void' then
+                func_str = func_str  .. 'return '
+                if tmp_conv_ref then
+                    func_str = func_str  .. '&'
+                end
+            end
+            func_str = func_str .. self_def .. cpp_name .. '(' .. args_str .. ');\n'
+            func_str = func_str .. '}'
             table.insert(func_str_list, func_str)
             fon = fon + 1
         end
@@ -219,20 +175,11 @@ function gen_functions(cls_cpp_name, t, indent)
         local func_str_list = {}
         local fon = 0
         for _, data in ipairs(data_list) do
-            if true then
-                func_str = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon
-            else
-                func_str = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon .. '()'
-            end
+            func_str = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon
             table.insert(func_str_list, func_str)
             fon = fon + 1
         end
-        if #func_str_list == 1 then
-            -- todo: bug check
-            str = indent .. '.addOverloadedFunctions("' .. name .. '", '
-        else
-            str = indent .. '.addOverloadedFunctions("' .. name .. '", '
-        end
+        str = indent .. '.addOverloadedFunctions("' .. name .. '", '
         str = str .. table.concat(func_str_list, ',') .. ')'
         if str ~= '' then
             table.insert(lines, str)
@@ -345,7 +292,7 @@ for _, key in pairs(keys) do
     global_lines = TableConcat(global_lines, gen_ref_attributes_wrappar(value.cpp_name, value.attributes))
     f = io.open("src/lua/" .. key .. "_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
-    f:write(table.concat(global_lines, '\n') .. '\n')
+    f:write(table.concat(global_lines, '\n') .. '\n\n')
     f:write('void ' .. f_str .. '(kaguya::State &lua)\n')
     f:write('{\n')
     f:write('    ' .. table.concat(lines, '\n    ') .. '\n')
@@ -354,24 +301,26 @@ for _, key in pairs(keys) do
 end
 
 -- global bindings
-f = io.open("src/lua/_autogen_lua_global_bindings.cpp", "w")
-f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
-f:write('\n')
-f:write('void _autogen_lua_global_bindings(kaguya::State &lua)\n')
-f:write('{\n')
---   global references
-for key, data in pairs(global_references) do
-    f:write('    lua["' .. key .. '"] = ' .. data.cpp_name.. ';\n')
+do
+    local global_lines = gen_wrappar_functions('', global_functions, '    ')
+    f = io.open("src/lua/_autogen_lua_global_bindings.cpp", "w")
+    f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
+    f:write(table.concat(global_lines, '\n') .. '\n\n')
+    f:write('void _autogen_lua_global_bindings(kaguya::State &lua)\n')
+    f:write('{\n')
+    --   global references
+    for key, data in pairs(global_references) do
+        f:write('    lua["' .. key .. '"] = ' .. data.cpp_name.. ';\n')
+    end
+    --   global functions
+    f:write('    lua["game"] = kaguya::NewTable();\n')
+    for _, data in pairs(global_functions) do
+        f:write('    lua["game"]["' .. data.name .. '"] = __' .. data.name.. '_wrappar_0;\n')
+    end
+    f:write('}\n')
+    f:close()
+    table.insert(autogen_functions, "_autogen_lua_global_bindings")
 end
---   global functions
-f:write('    lua["game"] = kaguya::NewTable();\n')
-for _, data in pairs(global_functions) do
-    cpp_name = data.cpp_name or data.name
-    f:write('    lua["game"]["' .. data.name .. '"] = ' .. cpp_name.. ';\n')
-end
-f:write('}\n')
-f:close()
-table.insert(autogen_functions, "_autogen_lua_global_bindings")
 
 
 -- enums
