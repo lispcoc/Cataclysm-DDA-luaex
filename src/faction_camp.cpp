@@ -1628,23 +1628,9 @@ void basecamp::start_relay_hide_site()
 
 void basecamp::start_fortifications( std::string &bldg_exp, bool by_radio )
 {
-    std::vector<std::string> allowed_locations;
-    if( bldg_exp == "faction_wall_level_N_1" ) {
-        allowed_locations = {
-            "faction_wall_level_N_0", "faction_wall_level_E_0",
-            "faction_wall_level_S_0", "faction_wall_level_W_0",
-            "faction_wall_level_N_1", "faction_wall_level_E_1",
-            "faction_wall_level_S_1", "faction_wall_level_W_1"
-        };
-    } else {
-        allowed_locations = {
-            "forest", "forest_thick", "forest_water", "field",
-            "faction_wall_level_N_0", "faction_wall_level_E_0",
-            "faction_wall_level_S_0", "faction_wall_level_W_0",
-            "faction_wall_level_N_1", "faction_wall_level_E_1",
-            "faction_wall_level_S_1", "faction_wall_level_W_1"
-        };
-    }
+    std::vector<std::string> allowed_locations = {
+        "forest", "forest_thick", "forest_water", "field"
+    };
     popup( _( "Select a start and end point.  Line must be straight.  Fields, forests, and "
               "swamps are valid fortification locations.  In addition to existing fortification "
               "constructions." ) );
@@ -1658,6 +1644,20 @@ void basecamp::start_fortifications( std::string &bldg_exp, bool by_radio )
         if( change_x && change_y ) {
             popup( "Construction line must be straight!" );
             return;
+        }
+        if( bldg_exp == "faction_wall_level_N_1" ) {
+            std::vector<tripoint> tmp_line = line_to( stop, start, 0 );
+            int line_count = tmp_line.size();
+            int yes_count = 0;
+            for( auto elem : tmp_line ) {
+                if( std::find( fortifications.begin(), fortifications.end(), elem ) != fortifications.end() ) {
+                    yes_count += 1;
+                }
+            }
+            if( yes_count < line_count ) {
+                popup( _( "Spiked pits must be built over existing trenches!" ) );
+                return;
+            }
         }
         std::vector<tripoint> fortify_om;
         if( ( change_x && stop.x < start.x ) || ( change_y && stop.y < start.y ) ) {
@@ -1865,11 +1865,11 @@ static std::pair<size_t, std::string> farm_action( const tripoint &omt_tgt, farm
                     if( farm_valid_seed( seed ) ) {
                         plots_cnt += 1;
                         if( comp ) {
-                            long skillLevel = comp->get_skill_level( skill_survival );
+                            int skillLevel = comp->get_skill_level( skill_survival );
                             ///\EFFECT_SURVIVAL increases number of plants harvested from a seed
-                            long plant_cnt = rng( skillLevel / 2, skillLevel );
-                            plant_cnt = std::min( std::max( plant_cnt, 1l ), 9l );
-                            long seed_cnt = std::max( 1l, rng( plant_cnt / 4, plant_cnt / 2 ) );
+                            int plant_cnt = rng( skillLevel / 2, skillLevel );
+                            plant_cnt = std::min( std::max( plant_cnt, 1 ), 9 );
+                            int seed_cnt = std::max( 1, rng( plant_cnt / 4, plant_cnt / 2 ) );
                             for( auto &i : iexamine::get_harvest_items( *seed.type, plant_cnt,
                                     seed_cnt, true ) ) {
                                 g->m.add_item_or_charges( g->u.pos(), i );
@@ -2204,8 +2204,7 @@ bool basecamp::gathering_return( const std::string &task, time_duration min_time
 void basecamp::fortifications_return()
 {
     const std::string msg = _( "returns from constructing fortifications..." );
-    npc_ptr comp = mission_return( "_faction_camp_om_fortifications", 3_hours, true, msg,
-                                   "construction", 2 );
+    npc_ptr comp = companion_choose_return( "_faction_camp_om_fortifications", 3_hours );
     if( comp != nullptr ) {
         std::string build_n = "faction_wall_level_N_0";
         std::string build_e = "faction_wall_level_E_0";
@@ -2237,7 +2236,12 @@ void basecamp::fortifications_return()
                 run_mapgen_update_func( build_first, build_point[pt] );
                 run_mapgen_update_func( build_second, build_point[pt] );
             }
+            if( comp->companion_mission_role_id == "faction_wall_level_N_0" ) {
+                tripoint fort_point = build_point[pt];
+                fortifications.push_back( fort_point );
+            }
         }
+        finish_return( *comp, true, msg, "construction", 2 );
     }
 }
 
@@ -2883,20 +2887,20 @@ void om_range_mark( const tripoint &origin, int range, bool add_notes,
 {
     std::vector<tripoint> note_pts;
     //North Limit
-    for( int x = origin.x - range - 1; x < origin.x + range + 2; x++ ) {
-        note_pts.push_back( tripoint( x, origin.y - range - 1, origin.z ) );
+    for( int x = origin.x - range; x < origin.x + range + 1; x++ ) {
+        note_pts.push_back( tripoint( x, origin.y - range, origin.z ) );
     }
     //South
-    for( int x = origin.x - range - 1; x < origin.x + range + 2; x++ ) {
-        note_pts.push_back( tripoint( x, origin.y + range + 1, origin.z ) );
+    for( int x = origin.x - range; x < origin.x + range + 1; x++ ) {
+        note_pts.push_back( tripoint( x, origin.y + range, origin.z ) );
     }
     //West
-    for( int y = origin.y - range - 1; y < origin.y + range + 2; y++ ) {
-        note_pts.push_back( tripoint( origin.x - range - 1, y, origin.z ) );
+    for( int y = origin.y - range; y < origin.y + range + 1; y++ ) {
+        note_pts.push_back( tripoint( origin.x - range, y, origin.z ) );
     }
     //East
-    for( int y = origin.y - range - 1; y < origin.y + range + 2; y++ ) {
-        note_pts.push_back( tripoint( origin.x + range + 1, y, origin.z ) );
+    for( int y = origin.y - range; y < origin.y + range + 1; y++ ) {
+        note_pts.push_back( tripoint( origin.x + range, y, origin.z ) );
     }
 
     for( auto pt : note_pts ) {
