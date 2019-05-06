@@ -194,8 +194,8 @@ class CppFunction:
     def isValid(self):
         if self.isInvalidOp():
             return False
-        if self.virtual:
-            return False
+        #if self.virtual:
+        #    return False
         if self.name in blacklist_function:
             return False
         if check_blacklist_type(self.strRVal()):
