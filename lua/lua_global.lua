@@ -6,6 +6,7 @@ global_references = {
 
 global_functions = {
     { name = "register_iuse", rval = "void", args = { "const std::string", "const kaguya::LuaRef", }, },
+    { name = "register_monattack", rval = "void", args = { "const std::string", "const kaguya::LuaRef", }, },
     { name = "add_msg", cpp_name = "add_msg_wrapper", rval = "void", args = { "std::string", }, },
     { name = "query_yn", cpp_name = "query_yn_wrapper", rval = "bool", args = { "const std::string" }, },
     { name = "popup", cpp_name = "popup_wrapper", rval = "void", args = { "const std::string" }, },

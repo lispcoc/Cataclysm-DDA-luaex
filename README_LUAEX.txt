@@ -1,7 +1,7 @@
 Cataclysm: DDA Lua Extension
 
 ■サポートVersion
-0.D-8907相当
+0.D-8909相当
 
 ■はじめに
 本ファイルはCataclysm: DDA(CDDA)のLuaサポート機能(バージョン0.D開発版で削除)を復活・拡張したMOD(独自ビルド)です。

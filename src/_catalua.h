@@ -247,6 +247,7 @@ void _autogen_lua_register(kaguya::State &lua);
 kaguya::State& get_luastate();
 void lua_loadmod( const std::string &base_path, const std::string &main_file_name );
 void register_iuse( const std::string type, const kaguya::LuaRef &f );
+void register_monattack( const std::string type, const kaguya::LuaRef &f );
 void add_msg_wrapper( const std::string &text );
 void popup_wrapper( const std::string &text );
 bool query_yn_wrapper( const std::string &text );

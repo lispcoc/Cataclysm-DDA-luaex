@@ -36,6 +36,34 @@ class lua_iuse_actor : iuse_actor
         }
 };
 
+class lua_mattack_actor : public mattack_actor
+{
+    public:
+        lua_mattack_actor( const mattack_id &id ) : mattack_actor( id ) { }
+        ~lua_mattack_actor() override = default;
+
+        bool call( monster &m ) const override {
+            bool ret  = false;
+            kaguya::State &lua = get_luastate();
+            
+            try {
+                lua["__cdda_lua_mattack_functions"]["__tmpret"] = lua["__cdda_lua_mattack_functions"][id]( &m );
+                try {
+                    ret = lua["__cdda_lua_mattack_functions"]["__tmpret"];
+                } catch( const std::exception & ) {
+                    // do nothing
+                }
+            } catch( const std::exception &err ) {
+                debugmsg( _( "Lua error: %1$s" ), err.what() );
+            }
+            return ret;
+        }
+        mattack_actor *clone() const override {
+            return new lua_mattack_actor( *this );
+        }
+        void load_internal( JsonObject &, const std::string & ) override {}
+};
+
 kaguya::State *lua_ptr = nullptr;
 bool lua_running_console = false;
 
@@ -53,6 +81,11 @@ void _autogen_lua_global_bindings( kaguya::State &lua );
 void Item_factory::add_actor_lua( iuse_actor *ptr )
 {
     add_actor( ptr );
+}
+
+void MonsterGenerator::add_attack_lua( const mtype_special_attack &wrapper )
+{
+    add_attack( wrapper );
 }
 
 void game_myPrint( kaguya::VariadicArgType args )
@@ -85,6 +118,7 @@ void init_lua()
     _autogen_lua_register( lua );
 
     lua["__cdda_lua_iuse_functions"] = kaguya::NewTable();
+    lua["__cdda_lua_mattack_functions"] = kaguya::NewTable();
     lua["print"] = kaguya::function( game_myPrint );
     lua.dofile( "lua/autoexec.lua" );
 }
@@ -118,6 +152,14 @@ void register_iuse( const std::string type, const kaguya::LuaRef &f )
     kaguya::LuaTable tbl = get_luastate()["__cdda_lua_iuse_functions"];
     tbl[type] = f;
     item_controller->add_actor_lua( lua_iuse_actor( type ).clone() );
+}
+
+void register_monattack( const std::string type, const kaguya::LuaRef &f )
+{
+    kaguya::LuaTable tbl = get_luastate()["__cdda_lua_mattack_functions"];
+    tbl[type] = f;
+    auto actor = new lua_mattack_actor( type );
+    MonsterGenerator::generator().add_attack_lua( mtype_special_attack( actor ) );
 }
 
 void add_msg_wrapper( const std::string &text )

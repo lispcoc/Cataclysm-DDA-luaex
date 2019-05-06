@@ -104,6 +104,8 @@ class MonsterGenerator
         std::map<std::string, mon_action_death> death_map;
         std::map<std::string, mon_action_defend> defense_map;
         std::map<std::string, mtype_special_attack> attack_map;
+    public:
+        void add_attack_lua( const mtype_special_attack &wrapper );
 };
 
 void load_monster_adjustment( JsonObject &jsobj );
