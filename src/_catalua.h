@@ -176,7 +176,6 @@
 #include "debug_menu.h"
 #include "iuse_software_sokoban.h"
 #include "overmap_ui.h"
-#include "version.h"
 #include "dependency_tree.h"
 #include "json.h"
 #include "overmapbuffer.h"
@@ -224,10 +223,13 @@
 #include "profession.h"
 #include "projectile.h"
 #include "pickup.h"
-#include "cata_tiles.h"
 #include "panels.h"
 #include "faction_camp.h"
 #include "sounds.h"
+
+#if defined(TILES)
+#include "cata_tiles.h"
+#endif // TILES
 
 #include "lua/kaguya.hpp"
 
