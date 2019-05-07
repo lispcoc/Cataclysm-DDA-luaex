@@ -1866,7 +1866,7 @@ int game::get_temperature( const tripoint &location )
     }
     //underground temperature = average New England temperature = 43F/6C rounded to int
     const int temp = ( location.z < 0 ? AVERAGE_ANNUAL_TEMPERATURE : temperature ) +
-                     ( new_game ? 0 : ( m.temperature( location ) + temp_mod ) );
+                     ( new_game ? 0 : ( m.get_temperature( location ) + temp_mod ) );
 
     temperature_cache.emplace( std::make_pair( location, temp ) );
     return temp;
@@ -1991,8 +1991,8 @@ void game::handle_key_blocking_activity()
         Creature *hostile_critter = is_hostile_very_close();
         if( hostile_critter != nullptr ) {
             if( cancel_activity_or_ignore_query( distraction_type::hostile_spotted,
-                                                 string_format( _( "You see %s approaching!" ),
-                                                         hostile_critter->disp_name() ) ) ) {
+                                                 string_format( _( "The %s is dangerously close!" ),
+                                                         hostile_critter->get_name() ) ) ) {
                 return;
             }
         }
