@@ -84,7 +84,11 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
         local func_str_list = {}
         local fon = 0
         for _, data in ipairs(data_list) do
-            local tmp_rval = string.gsub(data.rval, "%&$", "*")
+            local tmp_rval = data.rval
+            if not string.match(tmp_rval, "^const ") then
+                -- do not return pointer if constant rval
+                tmp_rval = string.gsub(tmp_rval, "%&$", "*")
+            end
             local tmp_conv_ref = (tmp_rval ~= data.rval)
             if data.rval == '' then
                 if cpp_name == 'operator int' then
@@ -276,6 +280,7 @@ string_ids = {}
 
 cpp_template_header = {
     '#include "../_catalua.h"',
+    '#include "_autogen_lua_enum_bindings_traits.cpp"',
 }
 
 autogen_functions = {}
@@ -334,16 +339,20 @@ do
 end
 
 
--- enums
-f = io.open("src/lua/_autogen_lua_enum_bindings.cpp", "w")
-f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
-f:write('\n')
+-- enums traits
+f = io.open("src/lua/_autogen_lua_enum_bindings_traits.cpp", "w")
+f:write('#include "../_catalua.h"\n\n')
 f:write('namespace kaguya{\n')
 for key, data in pairs(enums) do
     f:write(gen_enum_type_traits(key, data.cpp_name))
     f:write('\n')
 end
 f:write('}\n\n')
+f:close()
+
+-- enums
+f = io.open("src/lua/_autogen_lua_enum_bindings.cpp", "w")
+f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
 f:write('void _autogen_lua_enum_bindings(kaguya::State &lua)\n')
 f:write('{\n')
 f:write('    lua["enums"] = kaguya::NewTable();\n')

@@ -14,7 +14,6 @@ template<>  struct lua_type_traits<###cpp_name###> {
 		const char* buffer = lua_tolstring(l, index, &size);
         if (buffer) {
             std::string s = std::string(buffer, size);
-            std::cout << s << std::endl;
             kaguya::State& lua = get_luastate();
             if(lua["enums"]["###name###"][s] != kaguya::NilValue()){
                 return lua["enums"]["###name###"][s];
