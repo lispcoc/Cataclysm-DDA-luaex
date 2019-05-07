@@ -528,7 +528,10 @@ class CppEnum:
 
     def str(self, indent=''):
         s = self.name + ' = {' + '\n'
-        s += '    cpp_name = "' + self.cpp_name + '",\n'
+        if self.parent:
+            s += '    cpp_name = "' + self.parent + '::' + self.cpp_name + '",\n'
+        else:
+            s += '    cpp_name = "' + self.cpp_name + '",\n'
         s += '    values = {' + '\n'
         for v in self.values:
             v2 = v
@@ -637,11 +640,13 @@ for cls in all_cpp_classes:
     if cls.cpp_name in int_ids.keys():
         cls.int_id = int_ids[cls.cpp_name]
 
+all_cpp_classes = sorted(all_cpp_classes, cmp=lambda x,y: cmp(x.name.lower(), y.name.lower()))
 print('classes = {')
 for c in all_cpp_classes:
     print(c.str('    '))
 print('}')
 
+all_cpp_enums = sorted(all_cpp_enums, cmp=lambda x,y: cmp(x.name.lower(), y.name.lower()))
 print('enums = {')
 for e in all_cpp_enums:
     print(e.str('    '))

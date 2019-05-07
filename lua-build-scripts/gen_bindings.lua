@@ -207,6 +207,17 @@ function gen_inheritance(cls_data)
     return t
 end
 
+function gen_enum_type_traits(name, cpp_name)
+    local f = io.open("lua-build-scripts/template/enum_type_traits.h", "r")
+    local t = {}
+    for line in f:lines() do
+        local new_line = string.gsub(line, "###name###", name)
+        new_line = string.gsub(new_line, "###cpp_name###", cpp_name)
+        table.insert(t, new_line)
+    end
+    return table.concat(t, "\n")
+end
+
 -- generate string_id
 string_id_classes = {}
 for key, cls in pairs(classes) do
@@ -327,6 +338,12 @@ end
 f = io.open("src/lua/_autogen_lua_enum_bindings.cpp", "w")
 f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
 f:write('\n')
+f:write('namespace kaguya{\n')
+for key, data in pairs(enums) do
+    f:write(gen_enum_type_traits(key, data.cpp_name))
+    f:write('\n')
+end
+f:write('}\n\n')
 f:write('void _autogen_lua_enum_bindings(kaguya::State &lua)\n')
 f:write('{\n')
 f:write('    lua["enums"] = kaguya::NewTable();\n')
