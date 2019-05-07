@@ -36,6 +36,28 @@ classes_override = {
             { name = "critter_at", cpp_name = "critter_at<Creature>", rval = "const Creature *", args = { "const tripoint &", }, optional_args = { "bool", }, const = true, static = false, },
         }
     },
+    units__volume = {
+        cpp_name = "units::volume",
+        new = {
+            { },
+        },
+        attributes = {
+        },
+        functions = {
+            { name = "value", rval = "const int &", args = { }, const = true, static = false, },
+        }
+    },
+    units__mass = {
+        cpp_name = "units::mass",
+        new = {
+            { },
+        },
+        attributes = {
+        },
+        functions = {
+            { name = "value", rval = "const int &", args = { }, const = true, static = false, },
+        }
+    },
 }
 
 for key, data in pairs(classes_override) do

@@ -65,7 +65,7 @@ end
     return attributes
 end
 
-function gen_wrappar_functions(cls_cpp_name, t, indent)
+function gen_wrappar_functions(cls_cpp_name, cls_lua_name, t, indent)
     indent = indent or ''
     local lines = {}
     local functions = {}
@@ -97,7 +97,7 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
                     break
                 end
             end
-            local wrappar_func_name = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon
+            local wrappar_func_name = cls_lua_name .. '__' .. name .. '_wrappar_' .. fon
             local func_str = tmp_rval .. ' ' .. wrappar_func_name .. '('
             local an = 0
             local args_str_t_1 = {cls_cpp_name .. '* self'}
@@ -160,7 +160,7 @@ function gen_wrappar_functions(cls_cpp_name, t, indent)
     return lines
 end
 
-function gen_functions(cls_cpp_name, t, indent)
+function gen_functions(cls_cpp_name, cls_lua_name, t, indent)
     indent = indent or ''
     lines = {}
     functions = {}
@@ -179,7 +179,7 @@ function gen_functions(cls_cpp_name, t, indent)
         local func_str_list = {}
         local fon = 0
         for _, data in ipairs(data_list) do
-            func_str = cls_cpp_name .. '__' .. name .. '_wrappar_' .. fon
+            func_str = cls_lua_name .. '__' .. name .. '_wrappar_' .. fon
             table.insert(func_str_list, func_str)
             fon = fon + 1
         end
@@ -299,12 +299,12 @@ for _, key in pairs(keys) do
         table.insert(lines, constructors)
     end
     lines = TableConcat(lines, gen_attributes(value.cpp_name, value.attributes, '    '))
-    lines = TableConcat(lines, gen_functions(value.cpp_name, value.functions, '    '))
+    lines = TableConcat(lines, gen_functions(value.cpp_name, key, value.functions, '    '))
     table.insert(lines, '    );')
     local f_str = '_autogen_lua_' .. key .. '_bindings'
     table.insert(autogen_functions, f_str)
 
-    local global_lines = gen_wrappar_functions(value.cpp_name, value.functions, '    ')
+    local global_lines = gen_wrappar_functions(value.cpp_name, key, value.functions, '    ')
     global_lines = TableConcat(global_lines, gen_ref_attributes_wrappar(value.cpp_name, value.attributes))
     f = io.open("src/lua/" .. key .. "_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
@@ -318,7 +318,7 @@ end
 
 -- global bindings
 do
-    local global_lines = gen_wrappar_functions('', global_functions, '    ')
+    local global_lines = gen_wrappar_functions('', '', global_functions, '    ')
     f = io.open("src/lua/_autogen_lua_global_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
     f:write(table.concat(global_lines, '\n') .. '\n\n')

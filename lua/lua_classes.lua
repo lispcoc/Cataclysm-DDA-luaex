@@ -1783,7 +1783,7 @@ classes = {
             { name = "set_radiation", rval = "void", args = { "const int", "const int", "const int", }, const = false, static = false, },
             { name = "adjust_radiation", rval = "void", args = { "const tripoint &", "const int", }, const = false, static = false, },
             { name = "adjust_radiation", rval = "void", args = { "const int", "const int", "const int", }, const = false, static = false, },
-            { name = "temperature", rval = "int &", args = { "const tripoint &", }, const = false, static = false, },
+            { name = "get_temperature", rval = "int", args = { "const tripoint &", }, const = true, static = false, },
             { name = "set_temperature", rval = "void", args = { "const tripoint &", "const int", }, const = false, static = false, },
             { name = "set_temperature", rval = "void", args = { "const int", "const int", "const int", }, const = false, static = false, },
             { name = "process_active_items", rval = "void", args = { }, const = false, static = false, },
@@ -2712,6 +2712,7 @@ classes = {
             { name = "look_for_player", rval = "void", args = { "const player &", }, const = false, static = false, },
             { name = "saw_player_recently", rval = "bool", args = { }, const = true, static = false, },
             { name = "consume_food", rval = "bool", args = { }, const = false, static = false, },
+            { name = "get_thirst", rval = "int", args = { }, const = true, static = false, },
             { name = "has_omt_destination", rval = "bool", args = { }, const = true, static = false, },
             { name = "set_omt_destination", rval = "void", args = { }, const = false, static = false, },
             { name = "go_to_omt_destination", rval = "void", args = { }, const = false, static = false, },
@@ -3578,6 +3579,7 @@ classes = {
             --{ name = "operator+=", rval = "", args = { "const point &", }, const = false, static = false, },
             --{ name = "operator-", rval = "", args = { "const point &", }, const = true, static = false, },
             --{ name = "operator-=", rval = "", args = { "const point &", }, const = false, static = false, },
+            { name = "rotate", rval = "point", args = { "int", }, optional_args = { "const point &", }, const = true, static = false, },
         }
     },
     quality = {
