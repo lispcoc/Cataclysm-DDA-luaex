@@ -27,23 +27,30 @@ function gen_constructors(cls_cpp_name, t, indent)
     end
 end
 
-function gen_ref_attributes_wrappar(cls_cpp_name, t, indent)
+function gen_attributes_wrappar(cls_cpp_name, t, indent)
     indent = indent or ''
     local attributes = {}
     for name, data in pairs(t) do
         local str = ""
         local type_def = data.type
-        if data.reference then
-            if not data.writable then
-                type_def = 'const ' .. type_def
-            end
-            str = indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self){ return &self->' .. name .. '; }'
-        elseif data.static then
-            str = indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '*){ return ' .. cls_cpp_name .. '::' .. name .. '; }'
+        local no_ptr = false
+        local already_const = false
+        if data.static or string.match(type_def, "%*$") then
+            no_ptr = true
         end
-        if str ~= "" then
-            table.insert(attributes, str)
+        if string.match(type_def, "^const ") then
+            already_const = true
+        elseif not data.static then
+            type_def = 'const ' .. type_def
         end
+        if data.static then
+            str = str .. indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '*) { return ' .. cls_cpp_name .. '::' .. name .. '; }'
+        elseif not no_ptr then
+            str = str .. indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return &(self->' .. name .. '); }'
+        else
+            str = indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return self->' .. name .. '; }'
+        end
+        table.insert(attributes, str)
 end
     return attributes
 end
@@ -52,16 +59,9 @@ function gen_attributes(cls_cpp_name, t, indent)
     indent = indent or ''
     attributes = {}
     for name, data in pairs(t) do
-        str = ""
-        if data.reference or data.static then
-            str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
-        else
-            str = indent .. '.addProperty("' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ')'
-        end
-        if str ~= "" then
-            table.insert(attributes, str)
-        end
-end
+        str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
+        table.insert(attributes, str)
+    end
     return attributes
 end
 
@@ -305,7 +305,7 @@ for _, key in pairs(keys) do
     table.insert(autogen_functions, f_str)
 
     local global_lines = gen_wrappar_functions(value.cpp_name, key, value.functions, '    ')
-    global_lines = TableConcat(global_lines, gen_ref_attributes_wrappar(value.cpp_name, value.attributes))
+    global_lines = TableConcat(global_lines, gen_attributes_wrappar(value.cpp_name, value.attributes))
     f = io.open("src/lua/" .. key .. "_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
     f:write(table.concat(global_lines, '\n') .. '\n\n')

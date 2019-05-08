@@ -260,6 +260,7 @@ class CppVariable:
                     xml_memberdef.find('type'), method="text")
                 new_var.type = new_var.type.replace('\n', '')
                 new_var.type = new_var.type.replace('\r', '')
+                new_var.type = re.sub(r'\s+$', '', new_var.type)
                 if xml_memberdef.attrib['static'] == 'yes':
                     new_var.static = True
                 return new_var
@@ -267,7 +268,7 @@ class CppVariable:
 
     def str(self):
         string = self.name + ' = { '
-        string += 'type = "' + CppType(self.type).name + '", '
+        string += 'type = "' + self.type + '", '
         string += 'writable = '
         if self.isWritable():
             string += 'true, '
