@@ -31,26 +31,34 @@ function gen_attributes_wrappar(cls_cpp_name, t, indent)
     indent = indent or ''
     local attributes = {}
     for name, data in pairs(t) do
-        local str = ""
+        local str = ''
         local type_def = data.type
-        local no_ptr = false
-        local already_const = false
-        if data.static or string.match(type_def, "%*$") then
-            no_ptr = true
+        local is_ptr = false
+        local is_ref = false
+        if string.match(data.type, "%*$") then
+            is_ptr = true
         end
-        if string.match(type_def, "^const ") then
-            already_const = true
-        elseif not data.static then
-            type_def = 'const ' .. type_def
+        if string.match(data.type, "%&$") then
+            is_ref = true
         end
+        type_def = 'auto'
         if data.static then
-            str = str .. indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '*) { return ' .. cls_cpp_name .. '::' .. name .. '; }'
-        elseif not no_ptr then
-            str = str .. indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return &(self->' .. name .. '); }'
-        else
-            str = indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return self->' .. name .. '; }'
+            str = str .. indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '*) { return ' .. cls_cpp_name .. '::' .. name .. '; }\n'
+        elseif is_ref then
+            str = str .. indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return &self->' .. name .. '; }\n'
+        elseif is_ptr then
+            str = str .. indent .. type_def .. '& __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return *self->' .. name .. '; }\n'
         end
-        table.insert(attributes, str)
+        if data.writable then
+            if data.static then
+                str = str .. indent .. 'void __set_' .. name .. '(' .. cls_cpp_name .. '*, ' .. data.type ..' val) { ' .. cls_cpp_name .. '::' .. name .. ' = val; }\n'
+            elseif is_ref or is_ptr then
+                str = str .. indent .. 'void __set_' .. name .. '(' .. cls_cpp_name .. '* self, ' .. data.type ..' val) { self->' .. name .. ' = val; }\n'
+            end
+        end
+        if str ~= '' then
+            table.insert(attributes, str)
+        end
 end
     return attributes
 end
@@ -59,7 +67,23 @@ function gen_attributes(cls_cpp_name, t, indent)
     indent = indent or ''
     attributes = {}
     for name, data in pairs(t) do
-        str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
+        local is_ptr = false
+        local is_ref = false
+        if string.match(data.type, "%*$") then
+            is_ptr = true
+        end
+        if string.match(data.type, "%&$") then
+            is_ref = true
+        end
+        if data.static or is_ptr or is_ref then
+            if data.writable then
+                str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ', __set_' .. name .. ')'
+            else
+                str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
+            end
+        else
+            str = indent .. '.addProperty("' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ')'
+        end
         table.insert(attributes, str)
     end
     return attributes

@@ -296,6 +296,8 @@ class CppVariable:
         t = CppType(self.type)
         if t.is_const or t.is_static or self.isReference():
             return False
+        if re.search(r'pimpl', t.name):
+            return False
         return True
 
     def isReference(self):
