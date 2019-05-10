@@ -119,7 +119,8 @@ void init_lua()
 
     lua["__cdda_lua_iuse_functions"] = kaguya::NewTable();
     lua["__cdda_lua_mattack_functions"] = kaguya::NewTable();
-    lua["print"] = kaguya::function( game_myPrint );
+    lua["__cdda_internal_functions"] = kaguya::NewTable();
+    lua["__cdda_internal_functions"]["print"] = kaguya::function( game_myPrint );
     lua.dofile( "lua/autoexec.lua" );
 }
 
