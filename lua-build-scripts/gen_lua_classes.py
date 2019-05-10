@@ -205,7 +205,7 @@ class CppFunction:
                 return False
             if re.search(r"std::function", CppType(a).definition):
                 return False
-            if re.search(r'\(\)$', CppType(a).definition):
+            if re.search(r'\(\*?\)', CppType(a).definition):
                 return False
             if re.search(r'&&', CppType(a).definition):
                 return False
@@ -214,7 +214,7 @@ class CppFunction:
         for a in self.optional_args:
             if re.search(r"typename ", CppType(a).definition):
                 return False
-            if re.search(r'\(\)$', CppType(a).definition):
+            if re.search(r'\(\*?\)', CppType(a).definition):
                 return False
             if check_blacklist_type(CppType(a).name):
                 return False
