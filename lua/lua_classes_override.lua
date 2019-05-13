@@ -1,4 +1,9 @@
 classes_override = {
+    calendar = {
+        functions = {
+            { name = "get_turn", cpp_name = "operator int", rval = "int", args = { }, const = true, static = false, },
+        }
+    },
     Character = {
         functions = {
             { name = "find_parent", rval = "item *", args = { "const item &" }, const = false, static = false, },
@@ -35,6 +40,20 @@ classes_override = {
             { name = "critter_at", cpp_name = "critter_at<Creature>", rval = "Creature *", args = { "const tripoint &", }, optional_args = { "bool", }, const = false, static = false, },
             { name = "critter_at", cpp_name = "critter_at<Creature>", rval = "const Creature *", args = { "const tripoint &", }, optional_args = { "bool", }, const = true, static = false, },
         }
+    },
+    npc_template_id = {
+        cpp_name = "string_id<npc_template>",
+        new = {
+            { "string_id<npc_template>" },
+            { },
+            { "std::string" },
+        },
+        attributes = {
+        },
+        functions = {
+            { name = "str", rval = "const std::string &", args = {}, const = true, static = false, },
+            { name = "is_valid", rval = "bool", args = {}, const = true, static = false, },
+        },
     },
     units__volume = {
         cpp_name = "units::volume",

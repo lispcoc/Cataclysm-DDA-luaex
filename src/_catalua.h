@@ -227,6 +227,7 @@
 #include "faction_camp.h"
 #include "sounds.h"
 #include "magic.h"
+#include "handle_liquid.h"
 
 #if defined(TILES)
 #include "cata_tiles.h"

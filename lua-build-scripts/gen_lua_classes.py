@@ -71,6 +71,7 @@ valid_types = [
     'long',
     'double',
     'item_location',
+    'item_stack',
 ]
 
 lua_typemap = {
@@ -181,10 +182,17 @@ class CppFunction:
         return string
 
     def strRVal(self):
+        lua_rval_map = {
+            'operator int': 'int',
+            'operator float': 'float',
+            'operator double': 'double',
+        }
+        if self.name in lua_rval_map.keys():
+            return lua_rval_map[self.name]
         if not self.definition:
             return ''
-        if re.match(r'^operator', self.name):
-            return ''
+        #if re.match(r'^operator', self.name):
+        #    return ''
         r = re.sub(r'\s+[^\s]+$', '', self.definition)
         r = re.sub(r'static ', '', r)
         r = re.sub(r'constexpr ', '', r)
@@ -225,6 +233,8 @@ class CppFunction:
             return False
         if self.name == 'operator int':
             return False
+        if self.name == 'operator[]':
+            return False
         return True
 
     def luaName(self):
@@ -232,6 +242,7 @@ class CppFunction:
             'operator int': '_op_int',
             'operator float': '_op_float',
             'operator double': '_op_double',
+            'operator[]': '_op_bracket',
         }
         if self.name in lua_name_map.keys():
             return lua_name_map[self.name]
@@ -396,6 +407,7 @@ class CppClass:
         self.attributes = []
         self.functions = []
         self.base = None
+        self.abstract = False
 
     @classmethod
     def load_from_xml(cls, xml_compounddef):
@@ -405,6 +417,9 @@ class CppClass:
         if new_class.name in lua_typemap.keys():
             new_class.name = lua_typemap[new_class.name]
         new_class.name = new_class.name.replace(':', '_')
+        if 'abstract' in xml_compounddef.attrib.keys():
+            if xml_compounddef.attrib['abstract'] == 'yes':
+                new_class.abstract = True
         # function
         for member in xml_compounddef.iter('memberdef'):
             new_func = CppFunction.load_from_xml(member)
@@ -430,21 +445,22 @@ class CppClass:
         if self.int_id:
             s += '    int_id = "' + self.int_id + '",\n'
         s += '    new = {' + '\n'
-        for f in self.functions:
-            if self.cpp_name == f.name:
-                for num in range(len(f.optional_args) + 1):
-                    tmp_func = CppFunction()
-                    tmp_func.args = f.args
-                    tmp_func.optional_args = f.optional_args[0:num]
-                    s += '        '
-                    if not tmp_func.isValid():
-                        s += '--'
-                    s += '{ '
-                    for a in tmp_func.args:
-                        s += '"' + CppType(a).definition + '", '
-                    for a in tmp_func.optional_args:
-                        s += '"' + CppType(a).definition + '", '
-                    s += '},\n'
+        if not self.abstract:
+            for f in self.functions:
+                if self.cpp_name == f.name:
+                    for num in range(len(f.optional_args) + 1):
+                        tmp_func = CppFunction()
+                        tmp_func.args = f.args
+                        tmp_func.optional_args = f.optional_args[0:num]
+                        s += '        '
+                        if not tmp_func.isValid():
+                            s += '--'
+                        s += '{ '
+                        for a in tmp_func.args:
+                            s += '"' + CppType(a).definition + '", '
+                        for a in tmp_func.optional_args:
+                            s += '"' + CppType(a).definition + '", '
+                        s += '},\n'
         s += '    },' + '\n'
         s += '    attributes = {' + '\n'
         for a in self.attributes:

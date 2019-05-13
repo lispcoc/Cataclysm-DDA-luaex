@@ -27,4 +27,5 @@ global_functions = {
     { name = "get_omt_id", rval = "std::string", args = {"overmap", "tripoint"}, },
     { name = "omap_choose_point", cpp_name = "static_cast<tripoint(*)(const tripoint &)>(&ui::omap::choose_point)", rval = "tripoint", args = {"const tripoint &"}, },
     { name = "get_terrain_type", rval = "const ter_t &", args = {"int"}, },
+    { name = "handle_liquid", cpp_name = "liquid_handler::handle_liquid", rval = "bool", args = {"item &"}, optional_args = {"item *", "int", "const tripoint *", "const vehicle *", "const int", "const monster *"}, },
 }
