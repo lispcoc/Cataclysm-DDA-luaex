@@ -226,6 +226,7 @@
 #include "panels.h"
 #include "faction_camp.h"
 #include "sounds.h"
+#include "magic.h"
 
 #if defined(TILES)
 #include "cata_tiles.h"

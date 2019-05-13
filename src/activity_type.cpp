@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "json.h"
 #include "translations.h"
+#include "sounds.h"
 #include "player_activity.h"
 
 #include "_catalua.h"
@@ -122,6 +123,7 @@ bool activity_type::call_finish( player_activity *act, player *p ) const
             debugmsg( _( "Lua error: %1$s" ), err.what() );
         }
         pair->second( act, p );
+        sfx::end_activity_sounds(); // kill activity sounds at finish
         try {
             const std::string skill_increase_source = "training";
             get_luastate()["mod_callback"]( "on_activity_call_finish_finished",
