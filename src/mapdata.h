@@ -2,7 +2,7 @@
 #ifndef MAPDATA_H
 #define MAPDATA_H
 
-#include <stddef.h>
+#include <cstddef>
 #include <array>
 #include <bitset>
 #include <set>
@@ -179,6 +179,7 @@ enum ter_bitflags : int {
     TFLAG_HIDE_PLACE,
     TFLAG_BLOCK_WIND,
     TFLAG_FLAT,
+    TFLAG_RAIL,
 
     NUM_TERFLAGS
 };

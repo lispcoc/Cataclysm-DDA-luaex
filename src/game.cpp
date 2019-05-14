@@ -1,6 +1,6 @@
 #include "game.h"
 
-#include <stdio.h>
+#include <cstdio>
 #include <wctype.h>
 #include <algorithm>
 #include <chrono>
@@ -223,8 +223,6 @@ static const trait_id trait_INFRESIST( "INFRESIST" );
 static const trait_id trait_LEG_TENT_BRACE( "LEG_TENT_BRACE" );
 static const trait_id trait_M_IMMUNE( "M_IMMUNE" );
 static const trait_id trait_PARKOUR( "PARKOUR" );
-static const trait_id trait_PER_SLIME_OK( "PER_SLIME_OK" );
-static const trait_id trait_PER_SLIME( "PER_SLIME" );
 static const trait_id trait_RUMINANT( "RUMINANT" );
 static const trait_id trait_SHELL2( "SHELL2" );
 static const trait_id trait_VINES2( "VINES2" );
@@ -256,8 +254,6 @@ bool is_valid_in_w_terrain( int x, int y )
 {
     return x >= 0 && x < TERRAIN_WINDOW_WIDTH && y >= 0 && y < TERRAIN_WINDOW_HEIGHT;
 }
-
-#define DEFAULT_TILESET_ZOOM 16
 
 // This is the main game set-up process.
 game::game() :
@@ -693,6 +689,9 @@ bool game::start_game()
     safe_mode = ( get_option<bool>( "SAFEMODE" ) ? SAFE_MODE_ON : SAFE_MODE_OFF );
     mostseen = 0; // ...and mostseen is 0, we haven't seen any monsters yet.
     get_safemode().load_global();
+
+    last_mouse_edge_scroll = std::chrono::steady_clock::now();
+    last_mouse_edge_scroll_vector = tripoint_zero;
 
     init_autosave();
 
@@ -2232,6 +2231,56 @@ bool game::handle_mouseview( input_context &ctxt, std::string &action )
 
     // Mouse movement or un-handled key
     return true;
+}
+
+tripoint game::mouse_edge_scrolling( input_context ctxt, const int speed )
+{
+    const int rate = get_option<int>( "EDGE_SCROLL" );
+    tripoint ret = tripoint_zero;
+    if( rate == -1 ) {
+        // Fast return when the option is disabled.
+        return ret;
+    }
+    // Ensure the parameters are used even if the #if below is false
+    ( void ) ctxt;
+    ( void ) speed;
+#if (defined TILES || defined _WIN32 || defined WINDOWS)
+    auto now = std::chrono::steady_clock::now();
+    if( now < last_mouse_edge_scroll + std::chrono::milliseconds( rate ) ) {
+        return ret;
+    } else {
+        last_mouse_edge_scroll = now;
+    }
+    const input_event event = ctxt.get_raw_input();
+    if( event.type == CATA_INPUT_MOUSE ) {
+        const int threshold_x = projected_window_width() / 100;
+        const int threshold_y = projected_window_height() / 100;
+        if( event.mouse_x <= threshold_x ) {
+            ret.x -= speed;
+        } else if( event.mouse_x >= projected_window_width() - threshold_x ) {
+            ret.x += speed;
+        }
+        if( event.mouse_y <= threshold_y ) {
+            ret.y -= speed;
+        } else if( event.mouse_y >= projected_window_height() - threshold_y ) {
+            ret.y += speed;
+        }
+        last_mouse_edge_scroll_vector = ret;
+    } else if( event.type == CATA_INPUT_TIMEOUT ) {
+        return last_mouse_edge_scroll_vector;
+    }
+#endif
+    return ret;
+}
+
+tripoint game::mouse_edge_scrolling_terrain( input_context &ctxt )
+{
+    return mouse_edge_scrolling( ctxt, std::max( DEFAULT_TILESET_ZOOM / tileset_zoom, 1 ) );
+}
+
+tripoint game::mouse_edge_scrolling_overmap( input_context &ctxt )
+{
+    return mouse_edge_scrolling( ctxt, 1 );
 }
 
 #if defined(TILES)
@@ -6574,7 +6623,6 @@ look_around_result game::look_around( catacurses::window w_info, tripoint &cente
     const visibility_variables &cache = g->m.get_visibility_variables_cache();
 
     bool blink = true;
-    bool action_unprocessed = false;
     bool redraw = true;
     look_around_result result;
     do {
@@ -6640,12 +6688,7 @@ look_around_result game::look_around( catacurses::window w_info, tripoint &cente
 
         redraw = true;
         //Wait for input
-        if( action_unprocessed ) {
-            // There was an action unprocessed after the mouse event consumption loop, process it now
-            action_unprocessed = false;
-        } else {
-            action = ctxt.handle_input();
-        }
+        action = ctxt.handle_input( get_option<int>( "EDGE_SCROLL" ) );
         if( action == "LIST_ITEMS" ) {
             list_items_monsters();
         } else if( action == "TOGGLE_FAST_SCROLL" ) {
@@ -6690,49 +6733,24 @@ look_around_result game::look_around( catacurses::window w_info, tripoint &cente
             center = u.pos();
             lp = u.pos();
             u.view_offset.z = 0;
-        } else if( action == "MOUSE_MOVE" ) {
+        } else if( action == "MOUSE_MOVE" || action == "TIMEOUT" ) {
+            if( action == "TIMEOUT" ) {
+                blink = !blink;
+            }
             const tripoint old_lp = lp;
             const tripoint old_center = center;
-            // Maximum mouse events before a forced graphics update
-            int max_consume = 10;
-            do {
+            tripoint edge_scroll = mouse_edge_scrolling_terrain( ctxt );
+            if( edge_scroll != tripoint_zero ) {
+                if( action == "MOUSE_MOVE" ) {
+                    edge_scroll *= 2;
+                }
+                center += edge_scroll;
+            } else {
                 const cata::optional<tripoint> mouse_pos = ctxt.get_coordinates( w_terrain );
                 if( mouse_pos ) {
                     lx = mouse_pos->x;
                     ly = mouse_pos->y;
                 }
-#if (defined TILES || defined _WIN32 || defined WINDOWS)
-                // Below we implement mouse panning. In order to make
-                // it less jerky we rate limit it by only allowing a
-                // panning move during the first iteration of this
-                // mouse move event consumption loop.
-                if( max_consume == 10 && get_option<bool>( "EDGE_SCROLL" ) ) {
-                    const input_event event = ctxt.get_raw_input();
-                    const int threshold_x = projected_window_width() / 20;
-                    const int threshold_y = projected_window_height() / 20;
-                    const int panning_speed = std::max( DEFAULT_TILESET_ZOOM / tileset_zoom, 1 );
-                    if( event.mouse_x <= threshold_x ) {
-                        center.x -= panning_speed;
-                    } else if( event.mouse_x >= projected_window_width() - threshold_x ) {
-                        center.x += panning_speed;
-                    }
-                    if( event.mouse_y <= threshold_y ) {
-                        center.y -= panning_speed;
-                    } else if( event.mouse_y >= projected_window_height() - threshold_y ) {
-                        center.y += panning_speed;
-                    }
-                }
-#endif
-                if( --max_consume == 0 ) {
-                    break;
-                }
-                // Consume all consecutive mouse movements. This lowers CPU consumption
-                // by graphics updates when user moves the mouse continuously.
-                action = ctxt.handle_input( 10 );
-            } while( action == "MOUSE_MOVE" );
-            if( action != "MOUSE_MOVE" && action != "TIMEOUT" ) {
-                // The last event is not a mouse event or timeout, it needs to be processed in the next loop.
-                action_unprocessed = true;
             }
             lx = clamp( lx, 0, MAPSIZE_X );
             ly = clamp( ly, 0, MAPSIZE_Y );
@@ -6758,8 +6776,6 @@ look_around_result game::look_around( catacurses::window w_info, tripoint &cente
             if( select_zone && has_first_point ) { // is blinking
                 blink = true; // Always draw blink symbols when moving cursor
             }
-        } else if( action == "TIMEOUT" ) {
-            blink = !blink;
         } else if( action == "throw_blind" ) {
             result.peek_action = PA_BLIND_THROW;
         } else if( action == "zoom_in" ) {
@@ -9115,40 +9131,38 @@ bool game::plmove( int dx, int dy, int dz )
                 // breaking up some flat surface, like pavement
                 mining_turns /= 2;
             }
-            if( get_option<bool>( "AUTO_FEATURES" ) && get_option<bool>( "AUTO_MINING" ) &&
-                u.weapon.has_flag( "DIG_TOOL" ) ) {
-                if( u.weapon.has_flag( "POWERED" ) ) {
-                    if( u.weapon.ammo_sufficient() ) {
-                        mining_turns *= MINUTES( 30 );
-                        u.weapon.ammo_consume( u.weapon.ammo_required(), u.pos() );
-                        u.assign_activity( activity_id( "ACT_JACKHAMMER" ), mining_turns, -1,
+            if( get_option<bool>( "AUTO_FEATURES" ) && get_option<bool>( "AUTO_MINING" ) ) {
+                if( u.weapon.has_flag( "DIG_TOOL" ) ) {
+                    if( u.weapon.has_flag( "POWERED" ) ) {
+                        if( u.weapon.ammo_sufficient() ) {
+                            mining_turns *= MINUTES( 30 );
+                            u.weapon.ammo_consume( u.weapon.ammo_required(), u.pos() );
+                            u.assign_activity( activity_id( "ACT_JACKHAMMER" ), mining_turns, -1,
+                                               u.get_item_position( &u.weapon ) );
+                            u.activity.placement = dest_loc;
+                            add_msg( _( "You start breaking the %1$s with your %2$s." ),
+                                     m.tername( dest_loc ), u.weapon.tname() );
+                            u.defer_move( dest_loc ); // don't move into the tile until done mining
+                            return true;
+                        } else {
+                            add_msg( _( "Your %s doesn't turn on." ), u.weapon.tname() );
+                        }
+                    } else {
+                        mining_turns *= ( ( MAX_STAT + 4 ) - std::min( u.str_cur, MAX_STAT ) ) * MINUTES( 5 );
+                        u.assign_activity( activity_id( "ACT_PICKAXE" ), mining_turns, -1,
                                            u.get_item_position( &u.weapon ) );
                         u.activity.placement = dest_loc;
                         add_msg( _( "You start breaking the %1$s with your %2$s." ),
                                  m.tername( dest_loc ), u.weapon.tname() );
                         u.defer_move( dest_loc ); // don't move into the tile until done mining
                         return true;
-                    } else {
-                        add_msg( _( "Your %s doesn't turn on." ), u.weapon.tname() );
                     }
-                } else {
-                    mining_turns *= ( ( MAX_STAT + 4 ) - std::min( u.str_cur, MAX_STAT ) ) * MINUTES( 5 );
-                    u.assign_activity( activity_id( "ACT_PICKAXE" ), mining_turns, -1,
-                                       u.get_item_position( &u.weapon ) );
-                    u.activity.placement = dest_loc;
-                    add_msg( _( "You start breaking the %1$s with your %2$s." ),
-                             m.tername( dest_loc ), u.weapon.tname() );
+                } else if( u.has_trait( trait_BURROW ) ) {
+                    item burrowing_item( itype_id( "fake_burrowing" ) );
+                    u.invoke_item( &burrowing_item, "BURROW", dest_loc );
                     u.defer_move( dest_loc ); // don't move into the tile until done mining
                     return true;
                 }
-            } else if( u.has_active_mutation( trait_BURROW ) ) {
-                mining_turns *= ( ( MAX_STAT + 3 ) - std::min( u.str_cur, MAX_STAT ) ) * MINUTES( 2 );
-                u.assign_activity( activity_id( "ACT_BURROW" ), mining_turns, -1, 0 );
-                u.activity.placement = dest_loc;
-                add_msg( _( "You start tearing into the %s with your teeth and claws." ),
-                         m.tername( dest_loc ) );
-                u.defer_move( dest_loc ); // don't move into the tile until done mining
-                return true;
             }
         }
     }
