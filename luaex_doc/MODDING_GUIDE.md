@@ -41,7 +41,7 @@ bash = player:get_armor_bash(enums.body_part.bp_torso) -- 数値を渡す方法(
 
 ## 参考情報
 
-0.D安定板で使用できた以下の関数は使用できません。(0.D-8955時点)
+0.D安定板で使用できた以下の関数は使用できません。(0.D-8973時点)
 
 - monster:melee_attack
 - ter_t:color
