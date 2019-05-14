@@ -982,6 +982,11 @@ ifeq ($(LOCALIZE), 1)
 	LIBINTL=$$($(CROSS)otool -L $(APPTARGET) | grep libintl | sed -n 's/\(.*\.dylib\).*/\1/p') && if [ -f $$LIBINTL ]; then cp $$LIBINTL $(APPRESOURCESDIR)/; fi; \
 		if [ ! -z "$$OSXCROSS" ]; then LIBINTL=$$(basename $$LIBINTL) && if [ ! -z "$$LIBINTL" ]; then cp $(LIBSDIR)/gettext/lib/$$LIBINTL $(APPRESOURCESDIR)/; fi; fi
 endif
+ifdef LUA
+	cp -R lua $(APPRESOURCESDIR)/
+	LIBLUA=$$($(CROSS)otool -L $(APPTARGET) | grep liblua | sed -n 's/\(.*\.dylib\).*/\1/p') && if [ -f $$LIBLUA ]; then cp $$LIBLUA $(APPRESOURCESDIR)/; fi; \
+		if [ ! -z "$$OSXCROSS" ]; then LIBLUA=$$(basename $$LIBLUA) && if [ ! -z "$$LIBLUA" ]; then cp $(LIBSDIR)/lua/lib/$$LIBLUA $(APPRESOURCESDIR)/; fi; fi
+endif # ifdef LUA
 ifdef TILES
 ifdef SOUND
 	cp -R data/sound $(APPDATADIR)
