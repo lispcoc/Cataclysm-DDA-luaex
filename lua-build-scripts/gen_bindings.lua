@@ -23,7 +23,7 @@ function gen_constructors(cls_cpp_name, t, indent)
     if #constructors == 0 then
         return nil
     else
-        return indent .. '.setConstructors<' .. table.concat(constructors, ', ') .. '>()'
+        return indent .. 'sol::constructors<' .. table.concat(constructors, ', ') .. '>(),'
     end
 end
 
@@ -43,11 +43,11 @@ function gen_attributes_wrappar(cls_cpp_name, t, indent)
         end
         type_def = 'auto'
         if data.static then
-            str = str .. indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '*) { return ' .. cls_cpp_name .. '::' .. name .. '; }\n'
+            str = str .. indent .. type_def .. ' __get_' .. name .. '(' .. cls_cpp_name .. '*) { return ' .. cls_cpp_name .. '::' .. name .. '; }\n'
         elseif is_ref then
-            str = str .. indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return &self->' .. name .. '; }\n'
+            str = str .. indent .. type_def .. '* __get_' .. name .. '(' .. cls_cpp_name .. '* self) { return &self->' .. name .. '; }\n'
         elseif is_ptr then
-            str = str .. indent .. type_def .. '& __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return *self->' .. name .. '; }\n'
+            str = str .. indent .. type_def .. '& __get_' .. name .. '(' .. cls_cpp_name .. '* self) { return *self->' .. name .. '; }\n'
         end
         if data.writable then
             if data.static then
@@ -77,12 +77,12 @@ function gen_attributes(cls_cpp_name, t, indent)
         end
         if data.static or is_ptr or is_ref then
             if data.writable then
-                str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ', __set_' .. name .. ')'
+                str = indent .. '"' .. name .. '", sol::property(__get_' .. name .. ', __set_' .. name .. '),'
             else
-                str = indent .. '.addProperty("' .. name .. '", __get_' .. name .. ')'
+                str = indent .. '"' .. name .. '", sol::property(__get_' .. name .. '),'
             end
         else
-            str = indent .. '.addProperty("' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ')'
+            str = indent .. '"' .. name .. '", &' .. cls_cpp_name .. '::' .. name .. ','
         end
         table.insert(attributes, str)
     end
@@ -139,7 +139,7 @@ function gen_wrappar_functions(cls_cpp_name, cls_lua_name, t, indent)
                 an = an + 1
             end
             if data.optional_args then
-                table.insert(args_str_t_1, 'kaguya::VariadicArgType args')
+                table.insert(args_str_t_1, 'sol::variadic_args args')
             end
             func_str = func_str .. table.concat(args_str_t_1, ', ')
             func_str = func_str .. '){\n'
@@ -157,7 +157,7 @@ function gen_wrappar_functions(cls_cpp_name, cls_lua_name, t, indent)
                     func_str = func_str  .. self_def .. cpp_name .. '('
                     local opt_args_str_t = {}
                     for j = 1, (#data.optional_args - i + 1) do
-                        table.insert(opt_args_str_t, 'args[' .. (j - 1) .. '].get<' .. data.optional_args[j] .. '>()')
+                        table.insert(opt_args_str_t, 'args.get<' .. data.optional_args[j] .. '>(' .. (j - 1) .. ')')
                     end
                     func_str = func_str .. table.concat(TableConcat(args_str_t_2, opt_args_str_t), ', ')
                     func_str = func_str .. ');\n'
@@ -207,8 +207,8 @@ function gen_functions(cls_cpp_name, cls_lua_name, t, indent)
             table.insert(func_str_list, func_str)
             fon = fon + 1
         end
-        str = indent .. '.addOverloadedFunctions("' .. name .. '", '
-        str = str .. table.concat(func_str_list, ',') .. ')'
+        str = indent .. '"' .. name .. '", sol::overload('
+        str = str .. table.concat(func_str_list, ',') .. '),'
         if str ~= '' then
             table.insert(lines, str)
         end
@@ -304,7 +304,7 @@ string_ids = {}
 
 cpp_template_header = {
     '#include "../_catalua.h"',
-    '#include "_autogen_lua_enum_bindings_traits.cpp"',
+    --'#include "_autogen_lua_enum_bindings_traits.cpp"',
 }
 
 autogen_functions = {}
@@ -315,15 +315,16 @@ for _, key in pairs(keys) do
     local constructors = gen_constructors(value.cpp_name, value.new, '    ')
     local inheritance = gen_inheritance(value)
     local register_cls = value.cpp_name
+    table.insert(lines, 'lua.new_usertype<' .. register_cls .. '>("' .. key .. '",')
     if inheritance then
-        register_cls = register_cls .. ', kaguya::MultipleBase<' .. table.concat(inheritance, ', ') .. '>'
+        table.insert(lines, 'sol::base_classes, sol::bases<' .. table.concat(inheritance, ', ') .. '>(),')
     end
-    table.insert(lines, 'lua["' .. key .. '"].setClass(kaguya::UserdataMetatable<' .. register_cls .. '>()')
     if constructors ~= nil then
         table.insert(lines, constructors)
     end
     lines = TableConcat(lines, gen_attributes(value.cpp_name, value.attributes, '    '))
     lines = TableConcat(lines, gen_functions(value.cpp_name, key, value.functions, '    '))
+    table.insert(lines, '    "_class_name", [](){return std::string("aaa");}')
     table.insert(lines, '    );')
     local f_str = '_autogen_lua_' .. key .. '_bindings'
     table.insert(autogen_functions, f_str)
@@ -333,7 +334,7 @@ for _, key in pairs(keys) do
     f = io.open("src/lua/" .. key .. "_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
     f:write(table.concat(global_lines, '\n') .. '\n\n')
-    f:write('void ' .. f_str .. '(kaguya::State &lua)\n')
+    f:write('void ' .. f_str .. '(sol::state &lua)\n')
     f:write('{\n')
     f:write('    ' .. table.concat(lines, '\n    ') .. '\n')
     f:write('}\n')
@@ -346,14 +347,14 @@ do
     f = io.open("src/lua/_autogen_lua_global_bindings.cpp", "w")
     f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
     f:write(table.concat(global_lines, '\n') .. '\n\n')
-    f:write('void _autogen_lua_global_bindings(kaguya::State &lua)\n')
+    f:write('void _autogen_lua_global_bindings(sol::state &lua)\n')
     f:write('{\n')
     --   global references
     for key, data in pairs(global_references) do
         f:write('    lua["' .. key .. '"] = ' .. data.cpp_name.. ';\n')
     end
     --   global functions
-    f:write('    lua["game"] = kaguya::NewTable();\n')
+    f:write('    lua["game"] = lua.create_table_with();\n')
     for _, data in pairs(global_functions) do
         f:write('    lua["game"]["' .. data.name .. '"] = __' .. data.name.. '_wrappar_0;\n')
     end
@@ -362,7 +363,7 @@ do
     table.insert(autogen_functions, "_autogen_lua_global_bindings")
 end
 
-
+--[[
 -- enums traits
 f = io.open("src/lua/_autogen_lua_enum_bindings_traits.cpp", "w")
 f:write('#include "../_catalua.h"\n\n')
@@ -373,15 +374,16 @@ for key, data in pairs(enums) do
 end
 f:write('}\n\n')
 f:close()
+]]
 
 -- enums
 f = io.open("src/lua/_autogen_lua_enum_bindings.cpp", "w")
 f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
-f:write('void _autogen_lua_enum_bindings(kaguya::State &lua)\n')
+f:write('void _autogen_lua_enum_bindings(sol::state &lua)\n')
 f:write('{\n')
-f:write('    lua["enums"] = kaguya::NewTable();\n')
+f:write('    lua["enums"] = lua.create_table_with();\n')
 for key, data in pairs(enums) do
-    f:write('    lua["enums"]["' .. key .. '"] = kaguya::NewTable();\n')
+    f:write('    lua["enums"]["' .. key .. '"] = lua.create_table_with();\n')
     for _, value in pairs(data.values) do
         f:write('    lua["enums"]["' .. key .. '"]["' .. value[1] .. '"] = ' .. value[2] .. ';\n')
     end
@@ -395,10 +397,10 @@ table.insert(autogen_functions, "_autogen_lua_enum_bindings")
 f = io.open("src/lua/_autogen_lua_register.cpp", "w")
 f:write(table.concat(cpp_template_header, '\n') .. '\n\n')
 for _, f_str in ipairs(autogen_functions) do
-    f:write('void ' .. f_str .. '(kaguya::State &lua);\n')
+    f:write('void ' .. f_str .. '(sol::state &lua);\n')
 end
 f:write('\n')
-f:write('void _autogen_lua_register(kaguya::State &lua)\n')
+f:write('void _autogen_lua_register(sol::state &lua)\n')
 f:write('{\n')
 for _, f_str in ipairs(autogen_functions) do
     f:write('    ' .. f_str .. '(lua);\n')

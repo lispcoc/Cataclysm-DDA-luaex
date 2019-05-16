@@ -233,12 +233,26 @@
 #include "cata_tiles.h"
 #endif // TILES
 
-#include "lua/kaguya.hpp"
+#include <cstddef>
+#include "lua/sol.hpp"
 
 using namespace catacurses;
 using namespace om_direction;
 using namespace sounds;
 using namespace Pickup;
+
+namespace sol {
+namespace detail {
+	template <>
+	struct is_container<std::_List_iterator<item>> : std::false_type {};
+	template <>
+	struct is_container<field> : std::false_type {};
+	template <>
+	struct is_container<std::map< field_id, field_entry >::iterator> : std::false_type {};
+	template <>
+	struct is_container<std::map< field_id, field_entry >::const_iterator> : std::false_type {};
+}
+}
 
 extern std::stringstream lua_output_stream;
 extern std::stringstream lua_error_stream;
@@ -246,12 +260,12 @@ extern bool lua_running_console;
 
 void init_lua();
 void dummy();
-void _autogen_lua_register(kaguya::State &lua);
+void _autogen_lua_register(sol::state &lua);
 
-kaguya::State& get_luastate();
+sol::state& get_luastate();
 void lua_loadmod( const std::string &base_path, const std::string &main_file_name );
-void register_iuse( const std::string type, const kaguya::LuaRef &f );
-void register_monattack( const std::string type, const kaguya::LuaRef &f );
+void register_iuse( const std::string type, const sol::reference &f );
+void register_monattack( const std::string type, const sol::reference &f );
 void add_msg_wrapper( const std::string &text );
 void popup_wrapper( const std::string &text );
 bool query_yn_wrapper( const std::string &text );

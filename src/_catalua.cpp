@@ -17,7 +17,7 @@ class lua_iuse_actor : iuse_actor
         void load( JsonObject & ) override {}
         long use( player &, item &it, bool a, const tripoint &pos ) const override {
             long ret  = 0;
-            kaguya::State &lua = get_luastate();
+            auto &lua = get_luastate();
             
             try {
                 lua["__cdda_lua_iuse_functions"]["__tmpret"] = lua["__cdda_lua_iuse_functions"][type]( &it, a, pos );
@@ -44,7 +44,7 @@ class lua_mattack_actor : public mattack_actor
 
         bool call( monster &m ) const override {
             bool ret  = false;
-            kaguya::State &lua = get_luastate();
+            auto &lua = get_luastate();
             
             try {
                 lua["__cdda_lua_mattack_functions"]["__tmpret"] = lua["__cdda_lua_mattack_functions"][id]( &m );
@@ -64,7 +64,7 @@ class lua_mattack_actor : public mattack_actor
         void load_internal( JsonObject &, const std::string & ) override {}
 };
 
-kaguya::State *lua_ptr = nullptr;
+sol::state *lua_ptr = nullptr;
 bool lua_running_console = false;
 
 // Keep track of the current mod from which we are executing, so that
@@ -76,7 +76,7 @@ static std::unique_ptr<uilist> uilist_instance;
 std::stringstream lua_output_stream;
 std::stringstream lua_error_stream;
 
-void _autogen_lua_global_bindings( kaguya::State &lua );
+void _autogen_lua_global_bindings( sol::state &lua );
 
 void Item_factory::add_actor_lua( iuse_actor *ptr )
 {
@@ -88,10 +88,10 @@ void MonsterGenerator::add_attack_lua( const mtype_special_attack &wrapper )
     add_attack( wrapper );
 }
 
-void game_myPrint( kaguya::VariadicArgType args )
+void game_myPrint( sol::variadic_args args )
 {
     for( auto v : args ) {
-        lua_output_stream << v.get<std::string>();
+        lua_output_stream << v.as<std::string>();
     }
     lua_output_stream << std::endl;
 }
@@ -111,25 +111,25 @@ void init_lua()
     if( lua_ptr != nullptr ) {
         delete lua_ptr;
     }
-    lua_ptr = new kaguya::State;
-    kaguya::State &lua = *lua_ptr;
-    lua.setErrorHandler( lua_error_handler );
+    lua_ptr = new sol::state;
+    sol::state &lua = *lua_ptr;
+    //lua.setErrorHandler( lua_error_handler );
 
     _autogen_lua_register( lua );
 
-    lua["__cdda_lua_iuse_functions"] = kaguya::NewTable();
-    lua["__cdda_lua_mattack_functions"] = kaguya::NewTable();
-    lua["__cdda_internal_functions"] = kaguya::NewTable();
-    lua["__cdda_internal_functions"]["print"] = kaguya::function( game_myPrint );
-    lua.dofile( "lua/autoexec.lua" );
+    lua["__cdda_lua_iuse_functions"] = lua.create_table_with();
+    lua["__cdda_lua_mattack_functions"] = lua.create_table_with();
+    lua["__cdda_internal_functions"] = lua.create_table_with();
+    lua["__cdda_internal_functions"]["print"] = game_myPrint;
+    lua.script_file( "lua/autoexec.lua" );
 }
 
-kaguya::State &get_luastate()
+sol::state &get_luastate()
 {
     if( lua_ptr == nullptr ) {
         throw std::runtime_error( "Lua State is not found." );
     }
-    kaguya::State &lua = *lua_ptr;
+    sol::state &lua = *lua_ptr;
     // update Lua global values
     //_autogen_lua_global_bindings(lua);
     return lua;
@@ -140,7 +140,7 @@ void lua_loadmod( const std::string &base_path, const std::string &main_file_nam
     std::string full_path = base_path + "/" + main_file_name;
     if( file_exist( full_path ) ) {
         lua_file_path = base_path;
-        get_luastate().dofile( full_path );
+        get_luastate().script_file( full_path );
         lua_file_path.clear();
     }
 }
@@ -148,16 +148,16 @@ void lua_loadmod( const std::string &base_path, const std::string &main_file_nam
 //
 // Lua global functions
 //
-void register_iuse( const std::string type, const kaguya::LuaRef &f )
+void register_iuse( const std::string type, const sol::reference &f )
 {
-    kaguya::LuaTable tbl = get_luastate()["__cdda_lua_iuse_functions"];
+    sol::table tbl = get_luastate()["__cdda_lua_iuse_functions"];
     tbl[type] = f;
     item_controller->add_actor_lua( lua_iuse_actor( type ).clone() );
 }
 
-void register_monattack( const std::string type, const kaguya::LuaRef &f )
+void register_monattack( const std::string type, const sol::reference &f )
 {
-    kaguya::LuaTable tbl = get_luastate()["__cdda_lua_mattack_functions"];
+    sol::table tbl = get_luastate()["__cdda_lua_mattack_functions"];
     tbl[type] = f;
     auto actor = new lua_mattack_actor( type );
     MonsterGenerator::generator().add_attack_lua( mtype_special_attack( actor ) );

@@ -104,7 +104,7 @@ void lua_console::run()
 
         lua_running_console = true;
         try {
-            get_luastate()( input );
+            get_luastate().script( input );
         } catch( const std::exception &err ) {
             // debugmsg( _( "Lua error: %1$s" ), err.what() );
         }

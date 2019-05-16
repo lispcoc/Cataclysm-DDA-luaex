@@ -317,13 +317,14 @@ ifndef RELEASE
 endif
 
 ifeq ($(shell sh -c 'uname -o 2>/dev/null || echo not'),Cygwin)
-  OTHERS += -std=gnu++17
+  OTHERS += -std=gnu++1z
 else
-  OTHERS += -std=c++17
+  OTHERS += -std=c++1z
 endif
 ifeq ($(MSYS2), 1)
   OTHERS += -Wa,-mbig-obj
 endif
+OTHERS += -ftemplate-depth=20000
 
 CXXFLAGS += $(WARNINGS) $(DEBUG) $(DEBUGSYMS) $(PROFILE) $(OTHERS) -MMD -MP
 
