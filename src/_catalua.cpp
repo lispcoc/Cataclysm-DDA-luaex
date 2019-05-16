@@ -18,9 +18,10 @@ class lua_iuse_actor : iuse_actor
         long use( player &, item &it, bool a, const tripoint &pos ) const override {
             long ret  = 0;
             kaguya::State &lua = get_luastate();
-            
+
             try {
-                lua["__cdda_lua_iuse_functions"]["__tmpret"] = lua["__cdda_lua_iuse_functions"][type]( &it, a, pos );
+                lua["__cdda_lua_iuse_functions"]["__tmpret"] =
+                    lua["__cdda_lua_iuse_functions"][type]( &it, a, pos );
                 try {
                     ret = lua["__cdda_lua_iuse_functions"]["__tmpret"];
                 } catch( const std::exception & ) {
@@ -45,7 +46,7 @@ class lua_mattack_actor : public mattack_actor
         bool call( monster &m ) const override {
             bool ret  = false;
             kaguya::State &lua = get_luastate();
-            
+
             try {
                 lua["__cdda_lua_mattack_functions"]["__tmpret"] = lua["__cdda_lua_mattack_functions"][id]( &m );
                 try {
