@@ -246,9 +246,9 @@ extern bool lua_running_console;
 
 void init_lua();
 void dummy();
-void _autogen_lua_register(kaguya::State &lua);
+void _autogen_lua_register( kaguya::State &lua );
 
-kaguya::State& get_luastate();
+kaguya::State &get_luastate();
 void lua_loadmod( const std::string &base_path, const std::string &main_file_name );
 void register_iuse( const std::string type, const kaguya::LuaRef &f );
 void register_monattack( const std::string type, const kaguya::LuaRef &f );
@@ -256,16 +256,45 @@ void add_msg_wrapper( const std::string &text );
 void popup_wrapper( const std::string &text );
 bool query_yn_wrapper( const std::string &text );
 std::string string_input_popup_wrapper( const std::string &title, int width,
-        const std::string &desc );
+                                        const std::string &desc );
 uilist *create_uilist();
 uilist *create_uilist_no_cancel();
 calendar &get_calendar_turn_wrapper();
 time_duration get_time_duration_wrapper( const int t );
-monster *get_monster_at( const tripoint & p );
-Creature *get_critter_at( const tripoint & p );
-npc *get_npc_at( const tripoint & p );
+monster *get_monster_at( const tripoint &p );
+Creature *get_critter_at( const tripoint &p );
+npc *get_npc_at( const tripoint &p );
 monster *create_monster( const mtype_id &mon_type, const tripoint &p );
 std::string get_omt_id( const overmap &om, const tripoint &p );
 const ter_t &get_terrain_type( int id );
 
+namespace kaguya
+{
+template <typename T>
+struct lua_type_traits<cata::optional< T >> {
+    typedef cata::optional< T > get_type;
+    typedef const cata::optional< T > &push_type;
+    static bool strictCheckType( lua_State *l, int index ) {
+        return lua_type_traits<T>::strictCheckType( l, index );
+    }
+    static bool checkType( lua_State *l, int index ) {
+        return lua_type_traits<T>::checkType( l, index );
+    }
+    static get_type get( lua_State *l, int index ) {
+        const typename traits::remove_reference<T>::type *pointer = get_const_pointer(
+                    l, index, types::typetag<typename traits::remove_reference<T>::type>() );
+        if( !pointer ) {
+            throw LuaTypeMismatch();
+        }
+        return *pointer;
+    }
+    static int push( lua_State *l, push_type v ) {
+        if( !v ) {
+            lua_pushnil( l );
+            return 1;
+        }
+        return util::object_push( l, *v );
+    }
+};
+}
 #endif
