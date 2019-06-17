@@ -263,8 +263,3 @@ bool string_id<activity_type>::is_valid() const
 {
     return false;
 }
-
-int player::calories_for( const item & ) const
-{
-    return 0;
-}
