@@ -209,7 +209,6 @@ class JsonIn
         // data parsing
         std::string get_string(); // get the next value as a string
         int get_int(); // get the next value as an int
-        long get_long(); // get the next value as an long
         bool get_bool(); // get the next value as a bool
         double get_float(); // get the next value as a double
         std::string get_member_name(); // also strips the ':'
@@ -240,10 +239,10 @@ class JsonIn
         bool test_number();
         bool test_int() {
             return test_number();
-        };
+        }
         bool test_float() {
             return test_number();
-        };
+        }
         bool test_string();
         bool test_bitset();
         bool test_array();
@@ -259,8 +258,6 @@ class JsonIn
         bool read( short int &s );
         bool read( int &i );
         bool read( unsigned int &u );
-        bool read( long &l );
-        bool read( unsigned long &ul );
         bool read( float &f );
         bool read( double &d );
         bool read( std::string &s );
@@ -404,7 +401,7 @@ class JsonIn
 
         // error messages
         std::string line_number( int offset_modifier = 0 ); // for occasional use only
-        void error( const std::string &message, int offset = 0 ); // ditto
+        [[noreturn]] void error( const std::string &message, int offset = 0 ); // ditto
         void rewind( int max_lines = -1, int max_chars = -1 );
         std::string substr( size_t pos, size_t len = std::string::npos );
 };
@@ -674,8 +671,8 @@ class JsonObject
         bool has_member( const std::string &name ); // true iff named member exists
         std::set<std::string> get_member_names();
         std::string str(); // copy object json as string
-        void throw_error( std::string err );
-        void throw_error( std::string err, const std::string &name );
+        [[noreturn]] void throw_error( std::string err );
+        [[noreturn]] void throw_error( std::string err, const std::string &name );
         // seek to a value and return a pointer to the JsonIn (member must exist)
         JsonIn *get_raw( const std::string &name );
 
@@ -686,8 +683,6 @@ class JsonObject
         bool get_bool( const std::string &name, const bool fallback );
         int get_int( const std::string &name );
         int get_int( const std::string &name, const int fallback );
-        long get_long( const std::string &name );
-        long get_long( const std::string &name, const long fallback );
         double get_float( const std::string &name );
         double get_float( const std::string &name, const double fallback );
         std::string get_string( const std::string &name );
@@ -727,10 +722,10 @@ class JsonObject
         bool has_number( const std::string &name );
         bool has_int( const std::string &name ) {
             return has_number( name );
-        };
+        }
         bool has_float( const std::string &name ) {
             return has_number( name );
-        };
+        }
         bool has_string( const std::string &name );
         bool has_array( const std::string &name );
         bool has_object( const std::string &name );
@@ -835,7 +830,7 @@ class JsonArray
     public:
         JsonArray( JsonIn &jsin );
         JsonArray( const JsonArray &jsarr );
-        JsonArray() : start( 0 ), index( 0 ), end( 0 ), jsin( NULL ) {};
+        JsonArray() : start( 0 ), index( 0 ), end( 0 ), jsin( NULL ) {}
         ~JsonArray() {
             finish();
         }
@@ -853,7 +848,6 @@ class JsonArray
         // iterative access
         bool next_bool();
         int next_int();
-        long next_long();
         double next_float();
         std::string next_string();
         JsonArray next_array();
@@ -863,7 +857,6 @@ class JsonArray
         // static access
         bool get_bool( int index );
         int get_int( int index );
-        long get_long( int index );
         double get_float( int index );
         std::string get_string( int index );
         JsonArray get_array( int index );
@@ -879,10 +872,10 @@ class JsonArray
         bool test_number();
         bool test_int() {
             return test_number();
-        };
+        }
         bool test_float() {
             return test_number();
-        };
+        }
         bool test_string();
         bool test_bitset();
         bool test_array();
@@ -894,10 +887,10 @@ class JsonArray
         bool has_number( int index );
         bool has_int( int index ) {
             return has_number( index );
-        };
+        }
         bool has_float( int index ) {
             return has_number( index );
-        };
+        }
         bool has_string( int index );
         bool has_array( int index );
         bool has_object( int index );
@@ -962,6 +955,12 @@ std::set<T> JsonObject::get_tags( const std::string &name )
 
     return res;
 }
+
+/**
+ * Get an array member from json with name name.  For each element of that
+ * array (which should be a string) add it to the given set.
+ */
+void add_array_to_set( std::set<std::string> &, JsonObject &json, const std::string &name );
 
 /* JsonSerializer
  * ==============

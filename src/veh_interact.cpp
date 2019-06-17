@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "activity_handlers.h"
+#include "avatar.h"
 #include "cata_utility.h"
 #include "catacharset.h"
 #include "crafting.h"
@@ -436,18 +437,21 @@ task_reason veh_interact::cant_do( char mode )
     bool has_tools = false;
     bool part_free = true;
     bool has_skill = true;
+    bool enough_light = true;
 
     switch( mode ) {
         case 'i': // install mode
             enough_morale = g->u.has_morale_to_craft();
             valid_target = !can_mount.empty() && 0 == veh->tags.count( "convertible" );
             //tool checks processed later
+            enough_light = g->u.fine_detail_vision_mod() <= 4;
             has_tools = true;
             break;
         case 'r': // repair mode
             enough_morale = g->u.has_morale_to_craft();
             valid_target = !need_repair.empty() && cpart >= 0;
             has_tools = true; // checked later
+            enough_light = g->u.fine_detail_vision_mod() <= 4;
             break;
 
         case 'm': { // mend mode
@@ -461,6 +465,7 @@ task_reason veh_interact::cant_do( char mode )
                     return !pt.faults().empty();
                 }
             } );
+            enough_light = g->u.fine_detail_vision_mod() <= 4;
             has_tools = true; // checked later
         }
         break;
@@ -475,6 +480,7 @@ task_reason veh_interact::cant_do( char mode )
             //tool and skill checks processed later
             has_tools = true;
             has_skill = true;
+            enough_light = g->u.fine_detail_vision_mod() <= 4;
             break;
         case 's': // siphon mode
             valid_target = false;
@@ -500,6 +506,7 @@ task_reason veh_interact::cant_do( char mode )
             valid_target = wheel != nullptr;
             ///\EFFECT_STR allows changing tires on heavier vehicles without a jack
             has_tools = has_wrench && has_wheel && ( g->u.can_lift( *veh ) || has_jack );
+            enough_light = g->u.fine_detail_vision_mod() <= 4;
             break;
 
         case 'w': // assign crew
@@ -523,6 +530,9 @@ task_reason veh_interact::cant_do( char mode )
     }
     if( !enough_morale ) {
         return LOW_MORALE;
+    }
+    if( !enough_light ) {
+        return LOW_LIGHT;
     }
     if( !valid_target ) {
         return INVALID_TARGET;
@@ -578,7 +588,6 @@ bool veh_interact::can_install_part()
     if( is_drive_conflict() ) {
         return false;
     }
-
     if( sel_vpart_info->has_flag( "FUNNEL" ) ) {
         if( std::none_of( parts_here.begin(), parts_here.end(), [&]( const int e ) {
         return veh->parts[e].is_tank();
@@ -737,7 +746,9 @@ bool veh_interact::do_install( std::string &msg )
         case LOW_MORALE:
             msg = _( "Your morale is too low to construct..." );
             return false;
-
+        case LOW_LIGHT:
+            msg = _( "It's too dark to see what you are doing..." );
+            return false;
         case INVALID_TARGET:
             msg = _( "Cannot install any part here." );
             return false;
@@ -824,6 +835,7 @@ bool veh_interact::do_install( std::string &msg )
                part.has_flag( "SEAT" ) ||
                part.has_flag( "BED" ) ||
                part.has_flag( "SPACE_HEATER" ) ||
+               part.has_flag( "COOLER" ) ||
                part.has_flag( "DOOR_MOTOR" ) ||
                part.has_flag( "WATER_PURIFIER" ) ||
                part.has_flag( "WORKBENCH" );
@@ -993,7 +1005,9 @@ bool veh_interact::do_repair( std::string &msg )
         case LOW_MORALE:
             msg = _( "Your morale is too low to repair..." );
             return false;
-
+        case LOW_LIGHT:
+            msg = _( "It's too dark to see what you are doing..." );
+            return false;
         case INVALID_TARGET: {
             vehicle_part *most_repairable = get_most_repariable_part();
             if( most_repairable ) {
@@ -1081,7 +1095,9 @@ bool veh_interact::do_mend( std::string &msg )
         case LOW_MORALE:
             msg = _( "Your morale is too low to mend..." );
             return false;
-
+        case LOW_LIGHT:
+            msg = _( "It's too dark to see what you are doing..." );
+            return false;
         case INVALID_TARGET:
             msg = _( "No faulty parts require mending." );
             return false;
@@ -1606,7 +1622,9 @@ bool veh_interact::do_remove( std::string &msg )
         case LOW_MORALE:
             msg = _( "Your morale is too low to construct..." );
             return false;
-
+        case LOW_LIGHT:
+            msg = _( "It's too dark to see what you are doing..." );
+            return false;
         case INVALID_TARGET:
             msg = _( "No parts here." );
             return false;
@@ -1929,7 +1947,7 @@ void veh_interact::move_cursor( int dx, int dy, int dstart_at )
         obstruct = true;
     }
     nc_color col = cpart >= 0 ? veh->part_color( cpart ) : c_black;
-    long sym = cpart >= 0 ? veh->part_sym( cpart ) : ' ';
+    int sym = cpart >= 0 ? veh->part_sym( cpart ) : ' ';
     mvwputch( w_disp, hh, hw, obstruct ? red_background( col ) : hilite( col ),
               special_symbol( sym ) );
     wrefresh( w_disp );
@@ -2080,7 +2098,7 @@ void veh_interact::display_veh()
     std::vector<int> structural_parts = veh->all_parts_at_location( "structure" );
     for( auto &structural_part : structural_parts ) {
         const int p = structural_part;
-        long sym = veh->part_sym( p );
+        int sym = veh->part_sym( p );
         nc_color col = veh->part_color( p );
 
         int x =   veh->parts[p].mount.y + ddy;
@@ -2628,7 +2646,7 @@ void veh_interact::count_durability()
  * @param vpid The id of the vpart type to look for.
  * @return The item that was consumed.
  */
-item consume_vpart_item( const vpart_id &vpid )
+static item consume_vpart_item( const vpart_id &vpid )
 {
     std::vector<bool> candidates;
     const itype_id itid = vpid.obj().item;
@@ -2680,7 +2698,7 @@ item consume_vpart_item( const vpart_id &vpid )
     if( candidates[selection] ) {
         item_used = g->u.use_amount( itid, 1 );
     } else {
-        long quantity = 1;
+        int quantity = 1;
         item_used = g->m.use_amount( g->u.pos(), PICKUP_RANGE, itid, quantity );
     }
     remove_ammo( item_used, g->u );

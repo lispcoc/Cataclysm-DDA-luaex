@@ -4,6 +4,7 @@
 #include <numeric>
 #include <memory>
 
+#include "avatar.h"
 #include "game.h"
 #include "gun_mode.h"
 #include "item.h"
@@ -87,7 +88,7 @@ const item_location turret_data::base() const
     return item_location( vehicle_cursor( *veh, veh->index_of_part( part ) ), &part->base );
 }
 
-long turret_data::ammo_remaining() const
+int turret_data::ammo_remaining() const
 {
     if( !veh || !part ) {
         return 0;
@@ -98,7 +99,7 @@ long turret_data::ammo_remaining() const
     return part->base.ammo_remaining();
 }
 
-long turret_data::ammo_capacity() const
+int turret_data::ammo_capacity() const
 {
     if( !veh || !part || part->info().has_flag( "USE_TANKS" ) ) {
         return 0;
@@ -148,7 +149,7 @@ std::set<itype_id> turret_data::ammo_options() const
     } else {
         for( const auto &e : veh->fuels_left() ) {
             const itype *fuel = item::find_type( e.first );
-            if( fuel->ammo && fuel->ammo->type.count( part->base.ammo_type() ) &&
+            if( fuel->ammo && part->base.ammo_types().count( fuel->ammo->type ) &&
                 e.second >= part->base.ammo_required() ) {
 
                 opts.insert( fuel->get_id() );
@@ -249,8 +250,8 @@ void turret_data::prepare_fire( player &p )
     // set fuel tank fluid as ammo, if appropriate
     if( part->info().has_flag( "USE_TANKS" ) ) {
         auto mode = base()->gun_current_mode();
-        long qty  = mode->ammo_required();
-        long fuel_left = veh->fuel_left( ammo_current() );
+        int qty  = mode->ammo_required();
+        int fuel_left = veh->fuel_left( ammo_current() );
         mode->ammo_set( ammo_current(), std::min( qty * mode.qty, fuel_left ) );
     }
 }

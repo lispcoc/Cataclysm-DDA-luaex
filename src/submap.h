@@ -13,6 +13,7 @@
 #include "basecamp.h"
 #include "calendar.h"
 #include "computer.h"
+#include "construction.h"
 #include "field.h"
 #include "game_constants.h"
 #include "item.h"
@@ -193,6 +194,7 @@ class submap : public maptile_soa<SEEX, SEEY>    // TODO: Use private inheritanc
          * deleted.
          */
         std::vector<std::unique_ptr<vehicle>> vehicles;
+        std::map<tripoint, partial_con> partial_constructions;
         std::unique_ptr<computer> comp;
         basecamp camp;  // only allowing one basecamp per submap
 
@@ -214,7 +216,7 @@ struct maptile {
         size_t y;
         point pos() const {
             return point( x, y );
-        };
+        }
 
         maptile( submap *sub, const size_t nx, const size_t ny ) :
             sm( sub ), x( nx ), y( ny ) { }
@@ -249,11 +251,11 @@ struct maptile {
         }
 
         field_entry *find_field( const field_id field_to_find ) {
-            return sm->fld[x][y].findField( field_to_find );
+            return sm->fld[x][y].find_field( field_to_find );
         }
 
         bool add_field( const field_id field_to_add, const int new_density, const time_duration &new_age ) {
-            const bool ret = sm->fld[x][y].addField( field_to_add, new_density, new_age );
+            const bool ret = sm->fld[x][y].add_field( field_to_add, new_density, new_age );
             if( ret ) {
                 sm->field_count++;
             }

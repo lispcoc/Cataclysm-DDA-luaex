@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "action.h"
+#include "avatar.h"
 #include "cata_utility.h"
 #include "coordinate_conversions.h"
 #include "debug.h"
@@ -59,24 +60,26 @@ static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
 
 const trap_str_id tr_firewood_source( "tr_firewood_source" );
 const trap_str_id tr_practice_target( "tr_practice_target" );
+const trap_str_id tr_unfinished_construction( "tr_unfinished_construction" );
 
 // Construction functions.
 namespace construct
 {
 // Checks for whether terrain mod can proceed
-bool check_nothing( const tripoint & )
+static bool check_nothing( const tripoint & )
 {
     return true;
 }
 bool check_empty( const tripoint & ); // tile is empty
 bool check_support( const tripoint & ); // at least two orthogonal supports
 bool check_deconstruct( const tripoint & ); // either terrain or furniture must be deconstructible
-bool check_up_OK( const tripoint & ); // tile is empty and you're not on the surface
-bool check_down_OK( const tripoint & ); // tile is empty and you're not on z-10 already
+bool check_empty_up_OK( const tripoint & ); // tile is empty and below OVERMAP_HEIGHT
+bool check_up_OK( const tripoint & ); // tile is below OVERMAP_HEIGHT
+bool check_down_OK( const tripoint & ); // tile is above OVERMAP_DEPTH
 bool check_no_trap( const tripoint & );
 
 // Special actions to be run post-terrain-mod
-void done_nothing( const tripoint & ) {}
+static void done_nothing( const tripoint & ) {}
 void done_trunk_plank( const tripoint & );
 void done_grave( const tripoint & );
 void done_vehicle( const tripoint & );
@@ -85,6 +88,7 @@ void done_digormine_stair( const tripoint &, bool );
 void done_dig_stair( const tripoint & );
 void done_mine_downstair( const tripoint & );
 void done_mine_upstair( const tripoint & );
+void done_wood_stairs( const tripoint & );
 void done_window_curtains( const tripoint & );
 void done_extract_maybe_revert_to_dirt( const tripoint & );
 void done_mark_firewood( const tripoint & );
@@ -114,7 +118,7 @@ void standardize_construction_times( const int time )
     }
 }
 
-std::vector<construction *> constructions_by_desc( const std::string &description )
+static std::vector<construction *> constructions_by_desc( const std::string &description )
 {
     std::vector<construction *> result;
     for( auto &constructions_a : constructions ) {
@@ -125,14 +129,14 @@ std::vector<construction *> constructions_by_desc( const std::string &descriptio
     return result;
 }
 
-void load_available_constructions( std::vector<std::string> &available,
-                                   std::map<std::string, std::vector<std::string>> &cat_available,
-                                   bool hide_unconstructable )
+static void load_available_constructions( std::vector<std::string> &available,
+        std::map<std::string, std::vector<std::string>> &cat_available,
+        bool hide_unconstructable )
 {
     cat_available.clear();
     available.clear();
     for( auto &it : constructions ) {
-        if( !hide_unconstructable || can_construct( it ) ) {
+        if( it.on_display && ( !hide_unconstructable || can_construct( it ) ) ) {
             bool already_have_it = false;
             for( auto &avail_it : available ) {
                 if( avail_it == it.description ) {
@@ -148,7 +152,7 @@ void load_available_constructions( std::vector<std::string> &available,
     }
 }
 
-void draw_grid( const catacurses::window &w, const int list_width )
+static void draw_grid( const catacurses::window &w, const int list_width )
 {
     draw_border( w );
     mvwprintz( w, 0, 2, c_light_red, _( " Construction " ) );
@@ -164,7 +168,7 @@ void draw_grid( const catacurses::window &w, const int list_width )
     wrefresh( w );
 }
 
-nc_color construction_color( const std::string &con_name, bool highlight )
+static nc_color construction_color( const std::string &con_name, bool highlight )
 {
     nc_color col = c_dark_gray;
     if( g->u.has_trait( trait_id( "DEBUG_HS" ) ) ) {
@@ -192,6 +196,11 @@ nc_color construction_color( const std::string &con_name, bool highlight )
         }
     }
     return highlight ? hilite( col ) : col;
+}
+
+const std::vector<construction> &get_constructions()
+{
+    return constructions;
 }
 
 void construction_menu()
@@ -260,10 +269,10 @@ void construction_menu()
     const inventory &total_inv = g->u.crafting_inventory();
 
     input_context ctxt( "CONSTRUCTION" );
-    ctxt.register_action( "UP", _( "Move cursor up" ) );
-    ctxt.register_action( "DOWN", _( "Move cursor down" ) );
-    ctxt.register_action( "RIGHT", _( "Move tab right" ) );
-    ctxt.register_action( "LEFT", _( "Move tab left" ) );
+    ctxt.register_action( "UP", translate_marker( "Move cursor up" ) );
+    ctxt.register_action( "DOWN", translate_marker( "Move cursor down" ) );
+    ctxt.register_action( "RIGHT", translate_marker( "Move tab right" ) );
+    ctxt.register_action( "LEFT", translate_marker( "Move tab left" ) );
     ctxt.register_action( "PAGE_UP" );
     ctxt.register_action( "PAGE_DOWN" );
     ctxt.register_action( "CONFIRM" );
@@ -712,7 +721,7 @@ bool player_can_build( player &p, const inventory &inv, const std::string &desc 
     return false;
 }
 
-bool character_has_skill_for( const Character &c, const construction &con )
+static bool character_has_skill_for( const Character &c, const construction &con )
 {
     return std::all_of( con.required_skills.begin(), con.required_skills.end(),
     [&]( const std::pair<skill_id, int> &pr ) {
@@ -744,7 +753,7 @@ bool can_construct( const std::string &desc )
     return false;
 }
 
-bool can_construct( const construction &con, const tripoint &p )
+static bool can_construct( const construction &con, const tripoint &p )
 {
     // see if the special pre-function checks out
     bool place_okay = con.pre_special( p );
@@ -819,47 +828,87 @@ void place_construction( const std::string &desc )
         cons.front()->explain_failure( pnt );
         return;
     }
-
+    std::list<item> used;
     const construction &con = *valid.find( pnt )->second;
-    g->u.assign_activity( activity_id( "ACT_BUILD" ), con.adjusted_time(), con.id );
-    g->u.activity.placement = pnt;
+    // create the partial construction struct
+    partial_con pc;
+    pc.id = con.id;
+    pc.counter = 0;
+    // Set the trap that has the examine function
+    g->m.trap_set( pnt, tr_unfinished_construction );
+    // Use up the components
+    for( const auto &it : con.requirements->get_components() ) {
+        std::list<item> tmp = g->u.consume_items( it, 1, is_crafting_component );
+        used.splice( used.end(), tmp );
+    }
+    pc.components = used;
+    g->m.partial_con_set( pnt, pc );
+    for( const auto &it : con.requirements->get_tools() ) {
+        g->u.consume_tools( it );
+    }
+    g->u.assign_activity( activity_id( "ACT_BUILD" ) );
+    g->u.activity.placement = g->m.getabs( pnt );
 }
 
-void complete_construction()
+void complete_construction( player *p )
 {
-    player &u = g->u;
-    const construction &built = constructions[u.activity.index];
-
+    const tripoint terp = g->m.getlocal( p->activity.placement );
+    partial_con *pc = g->m.partial_con_at( terp );
+    if( !pc ) {
+        debugmsg( "No partial construction found at activity placement in complete_construction()" );
+        g->m.remove_trap( terp );
+        if( p->is_npc() ) {
+            npc *guy = dynamic_cast<npc *>( p );
+            guy->current_activity.clear();
+            guy->revert_after_activity();
+            guy->set_moves( 0 );
+        }
+        return;
+    }
+    const construction &built = constructions[pc->id];
     const auto award_xp = [&]( player & c ) {
         for( const auto &pr : built.required_skills ) {
-            c.practice( pr.first, static_cast<int>( ( 10 + 15 * pr.second ) * ( 1 + built.time / 30000.0 ) ),
+            c.practice( pr.first, static_cast<int>( ( 10 + 15 * pr.second ) * ( 1 + built.time / 180000.0 ) ),
                         static_cast<int>( pr.second * 1.25 ) );
         }
     };
 
-    award_xp( g->u );
-
+    award_xp( *p );
     // Friendly NPCs gain exp from assisting or watching...
-    for( auto &elem : g->u.get_crafting_helpers() ) {
-        if( character_has_skill_for( *elem, built ) ) {
-            add_msg( m_info, _( "%s assists you with the work..." ), elem->name );
-        } else {
-            //NPC near you isn't skilled enough to help
-            add_msg( m_info, _( "%s watches you work..." ), elem->name );
+    // TODO NPCs watching other NPCs do stuff and learning from it
+    if( p->is_player() ) {
+        for( auto &elem : g->u.get_crafting_helpers() ) {
+            if( character_has_skill_for( *elem, built ) ) {
+                add_msg( m_info, _( "%s assists you with the work..." ), elem->name );
+            } else {
+                //NPC near you isn't skilled enough to help
+                add_msg( m_info, _( "%s watches you work..." ), elem->name );
+            }
+
+            award_xp( *elem );
         }
-
-        award_xp( *elem );
     }
-
-    for( const auto &it : built.requirements->get_components() ) {
-        u.consume_items( it, 1, is_crafting_component );
+    g->m.disarm_trap( terp );
+    g->m.partial_con_remove( terp );
+    // Move any items that have found their way onto the construction site.
+    std::vector<tripoint> dump_spots;
+    for( const auto pt : g->m.points_in_radius( terp, 1 ) ) {
+        if( g->is_empty( pt ) && pt != terp ) {
+            dump_spots.push_back( pt );
+        }
     }
-    for( const auto &it : built.requirements->get_tools() ) {
-        u.consume_tools( it );
+    if( !dump_spots.empty() ) {
+        tripoint dump_spot = random_entry( dump_spots );
+        auto items_at = g->m.i_at( terp );
+        for( auto it = items_at.rbegin(); it != items_at.rend(); it++ ) {
+            g->m.add_item_or_charges( dump_spot, *it );
+            item *item_ptr = &*it;
+            g->m.i_rem( terp, item_ptr );
+        }
+    } else {
+        debugmsg( "No space to displace items from construction finishing" );
     }
-
     // Make the terrain change
-    const tripoint terp = u.activity.placement;
     if( !built.post_terrain.empty() ) {
         if( built.post_is_furniture ) {
             g->m.furn_set( terp, furn_str_id( built.post_terrain ) );
@@ -870,13 +919,12 @@ void complete_construction()
 
     // Spawn byproducts
     if( built.byproduct_item_group ) {
-        g->m.spawn_items( u.pos(), item_group::items_from( *built.byproduct_item_group, calendar::turn ) );
+        g->m.spawn_items( p->pos(), item_group::items_from( *built.byproduct_item_group, calendar::turn ) );
     }
 
-    add_msg( m_info, _( "You finish your construction: %s." ), _( built.description ) );
-
+    add_msg( m_info, _( "%s finishes construction : %s." ), p->disp_name(), _( built.description ) );
     // clear the activity
-    u.activity.set_to_null();
+    p->activity.set_to_null();
 
     // This comes after clearing the activity, in case the function interrupts
     // activities
@@ -922,6 +970,11 @@ bool construct::check_deconstruct( const tripoint &p )
     }
     // terrain can only be deconstructed when there is no furniture in the way
     return g->m.ter( p.x, p.y ).obj().deconstruct.can_do;
+}
+
+bool construct::check_empty_up_OK( const tripoint &p )
+{
+    return check_empty( p ) && check_up_OK( p );
 }
 
 bool construct::check_up_OK( const tripoint & )
@@ -996,7 +1049,7 @@ void construct::done_grave( const tripoint &p )
     g->m.destroy_furn( p, true );
 }
 
-vpart_id vpart_from_item( const std::string &item_id )
+static vpart_id vpart_from_item( const std::string &item_id )
 {
     for( const auto &e : vpart_info::all() ) {
         const vpart_info &vp = e.second;
@@ -1070,6 +1123,14 @@ void construct::done_deconstruct( const tripoint &p )
             add_msg( _( "That %s can not be disassembled!" ), t.name() );
             return;
         }
+        if( t.deconstruct.deconstruct_above ) {
+            const tripoint top = p + tripoint( 0, 0, 1 );
+            if( g->m.has_furn( top ) ) {
+                add_msg( _( "That %s can not be dissasembled, since there is furniture above it." ), t.name() );
+                return;
+            }
+            done_deconstruct( top );
+        }
         if( t.id == "t_console_broken" )  {
             if( g->u.get_skill_level( skill_electronics ) >= 1 ) {
                 g->u.practice( skill_electronics, 20, 4 );
@@ -1086,7 +1147,7 @@ void construct::done_deconstruct( const tripoint &p )
     }
 }
 
-void unroll_digging( const int numer_of_2x4s )
+static void unroll_digging( const int numer_of_2x4s )
 {
     // refund components!
     item rope( "rope_30" );
@@ -1191,6 +1252,12 @@ void construct::done_mine_upstair( const tripoint &p )
     tmpmap.save();
 }
 
+void construct::done_wood_stairs( const tripoint &p )
+{
+    const tripoint top = p + tripoint( 0, 0, 1 );
+    g->m.ter_set( top, ter_id( "t_wood_stairs_down" ) );
+}
+
 void construct::done_window_curtains( const tripoint & )
 {
     // copied from iexamine::curtains
@@ -1274,9 +1341,11 @@ void load_construction( JsonObject &jo )
     }
 
     con.category = jo.get_string( "category", "OTHER" );
-    // constructions use different time units in json, this makes it compatible
-    // with recipes/requirements, TODO: should be changed in json
-    con.time = jo.get_int( "time" ) * 1000;
+    if( jo.has_int( "time" ) ) {
+        con.time = to_moves<int>( time_duration::from_minutes( jo.get_int( "time" ) ) );
+    } else if( jo.has_string( "time" ) ) {
+        con.time = to_moves<int>( time_duration::read_from_json_string( *jo.get_raw( "time" ) ) );
+    }
 
     if( jo.has_string( "using" ) ) {
         con.requirements = requirement_id( jo.get_string( "using" ) );
@@ -1317,6 +1386,7 @@ void load_construction( JsonObject &jo )
             { "check_empty", construct::check_empty },
             { "check_support", construct::check_support },
             { "check_deconstruct", construct::check_deconstruct },
+            { "check_empty_up_OK", construct::check_empty_up_OK },
             { "check_up_OK", construct::check_up_OK },
             { "check_down_OK", construct::check_down_OK },
             { "check_no_trap", construct::check_no_trap }
@@ -1331,6 +1401,7 @@ void load_construction( JsonObject &jo )
             { "done_dig_stair", construct::done_dig_stair },
             { "done_mine_downstair", construct::done_mine_downstair },
             { "done_mine_upstair", construct::done_mine_upstair },
+            { "done_wood_stairs", construct::done_wood_stairs },
             { "done_window_curtains", construct::done_window_curtains },
             { "done_extract_maybe_revert_to_dirt", construct::done_extract_maybe_revert_to_dirt },
             { "done_mark_firewood", construct::done_mark_firewood },
@@ -1349,6 +1420,8 @@ void load_construction( JsonObject &jo )
     assign_or_debugmsg( con.post_special, jo.get_string( "post_special", "" ), post_special_map );
     assign_or_debugmsg( con.explain_failure, jo.get_string( "explain_failure", "" ), explain_fail_map );
     con.vehicle_start = jo.get_bool( "vehicle_start", false );
+
+    con.on_display = jo.get_bool( "on_display", true );
 
     constructions.push_back( con );
 }
@@ -1481,5 +1554,83 @@ void finalize_constructions()
 
     for( size_t i = 0; i < constructions.size(); i++ ) {
         constructions[ i ].id = i;
+    }
+}
+
+void get_build_reqs_for_furn_ter_ids( const std::pair<std::map<ter_id, int>,
+                                      std::map<furn_id, int>> &changed_ids,
+                                      build_reqs &total_reqs )
+{
+    std::map<size_t, int> total_builds;
+
+    // iteratively recurse through the pre-terrains until the pre-terrain is empty, adding
+    // the constructions to the total_builds map
+    const auto add_builds = [&total_builds]( const construction & build, int count ) {
+        if( total_builds.find( build.id ) == total_builds.end() ) {
+            total_builds[build.id] = 0;
+        }
+        total_builds[build.id] += count;
+        std::string build_pre_ter = build.pre_terrain;
+        while( !build_pre_ter.empty() ) {
+            for( const construction &pre_build : constructions ) {
+                if( pre_build.category == "REPAIR" ) {
+                    continue;
+                }
+                if( pre_build.post_terrain == build_pre_ter ) {
+                    if( total_builds.find( pre_build.id ) == total_builds.end() ) {
+                        total_builds[pre_build.id] = 0;
+                    }
+                    total_builds[pre_build.id] += count;
+                    build_pre_ter = pre_build.pre_terrain;
+                    break;
+                }
+            }
+            break;
+        }
+    };
+
+    // go through the list of terrains and add their constructions and any pre-constructions
+    // to the map of total builds
+    for( const auto &ter_data : changed_ids.first ) {
+        for( const construction &build : constructions ) {
+            if( build.post_terrain.empty() || build.post_is_furniture ||
+                build.category == "REPAIR" ) {
+                continue;
+            }
+            if( ter_id( build.post_terrain ) == ter_data.first ) {
+                add_builds( build, ter_data.second );
+                break;
+            }
+        }
+    }
+    // same, but for furniture
+    for( const auto &furn_data : changed_ids.second ) {
+        for( const construction &build : constructions ) {
+            if( build.post_terrain.empty() || !build.post_is_furniture ||
+                build.category == "REPAIR" ) {
+                continue;
+            }
+            if( furn_id( build.post_terrain ) == furn_data.first ) {
+                add_builds( build, furn_data.second );
+                break;
+            }
+        }
+    }
+
+    for( const auto &build_data : total_builds ) {
+        const construction &build = constructions[build_data.first];
+        const int count = build_data.second;
+        total_reqs.time += build.time * count;
+        if( total_reqs.reqs.find( build.requirements ) == total_reqs.reqs.end() ) {
+            total_reqs.reqs[build.requirements] = 0;
+        }
+        total_reqs.reqs[build.requirements] += count;
+        for( const auto &req_skill : build.required_skills ) {
+            if( total_reqs.skills.find( req_skill.first ) == total_reqs.skills.end() ) {
+                total_reqs.skills[req_skill.first] = req_skill.second;
+            } else if( total_reqs.skills[req_skill.first] < req_skill.second ) {
+                total_reqs.skills[req_skill.first] = req_skill.second;
+            }
+        }
     }
 }

@@ -8,6 +8,7 @@
 #include "item.h"
 #include "itype.h"
 #include "mondeath.h"
+#include "monstergenerator.h"
 #include "translations.h"
 #include "mapdata.h"
 
@@ -110,7 +111,7 @@ bool mtype::has_placate_trigger( mon_trigger trigger ) const
 
 bool mtype::in_category( const std::string &category ) const
 {
-    return ( categories.find( category ) != categories.end() );
+    return categories.find( category ) != categories.end();
 }
 
 bool mtype::in_species( const species_id &spec ) const
@@ -220,4 +221,12 @@ int mtype::get_meat_chunks_count() const
 std::string mtype::get_description() const
 {
     return _( description );
+}
+
+std::string mtype::get_footsteps() const
+{
+    for( const species_id &s : species ) {
+        return s.obj().get_footsteps();
+    }
+    return "footsteps.";
 }

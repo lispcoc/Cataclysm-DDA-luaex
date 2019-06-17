@@ -172,6 +172,11 @@ Xcode/
 # gdb
 .gdb_history
 
+# Flatpak build artifacts
+/.flatpak-builder/
+/repo/
+/build-dir/
+
 # lua-extention
 /lua-build-scripts/doxygen/html/*
 /lua-build-scripts/doxygen/xml/*

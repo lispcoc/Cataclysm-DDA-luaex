@@ -10,7 +10,9 @@
 #include <string>
 #include <vector>
 
+#include "avatar.h"
 #include "game.h"
+#include "bionics.h"
 #include "inventory_ui.h"
 #include "item.h"
 #include "itype.h"
@@ -42,10 +44,16 @@
 #include "units.h"
 #include "type_id.h"
 
+const skill_id skill_computer( "computer" );
+const skill_id skill_electronics( "electronics" );
+const skill_id skill_firstaid( "firstaid" );
+
+static const trait_id trait_NOPAIN( "NOPAIN" );
+
 class Character;
 
-typedef std::function<bool( const item & )> item_filter;
-typedef std::function<bool( const item_location & )> item_location_filter;
+using item_filter = std::function<bool ( const item & )>;
+using item_location_filter = std::function<bool ( const item_location & )>;
 
 namespace
 {
@@ -81,7 +89,7 @@ bool inventory_filter_preset::is_shown( const item_location &location ) const
     return filter( location );
 }
 
-item_location_filter convert_filter( const item_filter &filter )
+static item_location_filter convert_filter( const item_filter &filter )
 {
     return [ &filter ]( const item_location & loc ) {
         return filter( *loc );
@@ -154,24 +162,24 @@ static item_location inv_internal( player &u, const inventory_selector_preset &p
     } while( true );
 }
 
-void game_menus::inv::common( player &p )
+void game_menus::inv::common( avatar &you )
 {
     // Return to inventory menu on those inputs
     static const std::set<int> loop_options = { { '\0', '=', 'f' } };
 
-    inventory_pick_selector inv_s( p );
+    inventory_pick_selector inv_s( you );
 
     inv_s.set_title( _( "Inventory" ) );
     inv_s.set_hint( string_format(
                         _( "Item hotkeys assigned: <color_light_gray>%d</color>/<color_light_gray>%d</color>" ),
-                        p.allocated_invlets().size(), inv_chars.size() ) );
+                        you.allocated_invlets().size(), inv_chars.size() ) );
 
     int res = 0;
 
     do {
-        p.inv.restack( p );
+        you.inv.restack( you );
         inv_s.clear_items();
-        inv_s.add_character_items( p );
+        inv_s.add_character_items( you );
         inv_s.update();
 
         const item_location &location = inv_s.execute();
@@ -186,7 +194,7 @@ void game_menus::inv::common( player &p )
         }
 
         g->refresh_all();
-        res = g->inventory_item_menu( p.get_item_position( location.get_item() ) );
+        res = g->inventory_item_menu( you.get_item_position( location.get_item() ) );
         g->refresh_all();
 
     } while( loop_options.count( res ) != 0 );
@@ -322,9 +330,9 @@ class take_off_inventory_preset: public armor_inventory_preset
         }
 };
 
-item_location game_menus::inv::take_off( player &p )
+item_location game_menus::inv::take_off( avatar &you )
 {
-    return inv_internal( p, take_off_inventory_preset( p, "color_red" ), _( "Take off item" ), 1,
+    return inv_internal( you, take_off_inventory_preset( you, "color_red" ), _( "Take off item" ), 1,
                          _( "You don't wear anything." ) );
 }
 
@@ -335,7 +343,7 @@ item_location game::inv_map_splice( item_filter filter, const std::string &title
                          title, radius, none_message );
 }
 
-item_location game_menus::inv::container_for( player &p, const item &liquid, int radius )
+item_location game_menus::inv::container_for( avatar &you, const item &liquid, int radius )
 {
     const auto filter = [ &liquid ]( const item_location & location ) {
         if( location.where() == item_location::type::character ) {
@@ -351,7 +359,7 @@ item_location game_menus::inv::container_for( player &p, const item &liquid, int
         return location->get_remaining_capacity_for_liquid( liquid, allow_buckets ) > 0;
     };
 
-    return inv_internal( p, inventory_filter_preset( filter ),
+    return inv_internal( you, inventory_filter_preset( filter ),
                          string_format( _( "Container for %s" ), liquid.display_name( liquid.charges ) ), radius,
                          string_format( _( "You don't have a suitable container for carrying %s." ),
                                         liquid.tname() ) );
@@ -763,9 +771,9 @@ class activatable_inventory_preset : public pickup_inventory_preset
         const player &p;
 };
 
-item_location game_menus::inv::use( player &p )
+item_location game_menus::inv::use( avatar &you )
 {
-    return inv_internal( p, activatable_inventory_preset( p ),
+    return inv_internal( you, activatable_inventory_preset( you ),
                          _( "Use item" ), 1,
                          _( "You don't have any items you can use." ) );
 }
@@ -887,12 +895,19 @@ class read_inventory_preset: public pickup_inventory_preset
                     return unknown;
                 }
                 std::vector<std::string> dummy;
-                const player *reader = p.get_book_reader( *loc, dummy );
+
+                // This is terrible and needs to be removed asap when this entire file is refactored
+                // to use the new avatar class
+                const avatar *u = dynamic_cast<const avatar *>( &p );
+                if( !u ) {
+                    return std::string();
+                }
+                const player *reader = u->get_book_reader( *loc, dummy );
                 if( reader == nullptr ) {
                     return std::string();  // Just to make sure
                 }
                 // Actual reading time (in turns). Can be penalized.
-                const int actual_turns = p.time_to_read( *loc, *reader ) / to_moves<int>( 1_turns );
+                const int actual_turns = u->time_to_read( *loc, *reader ) / to_moves<int>( 1_turns );
                 // Theoretical reading time (in turns) based on the reader speed. Free of penalties.
                 const int normal_turns = get_book( loc ).time * reader->read_speed() / to_moves<int>( 1_turns );
                 const std::string duration = to_string_approx( time_duration::from_turns( actual_turns ), false );
@@ -910,8 +925,15 @@ class read_inventory_preset: public pickup_inventory_preset
         }
 
         std::string get_denial( const item_location &loc ) const override {
+            // This is terrible and needs to be removed asap when this entire file is refactored
+            // to use the new avatar class
+            const avatar *u = dynamic_cast<const avatar *>( &p );
+            if( !u ) {
+                return std::string();
+            }
+
             std::vector<std::string> denials;
-            if( p.get_book_reader( *loc, denials ) == nullptr && !denials.empty() ) {
+            if( u->get_book_reader( *loc, denials ) == nullptr && !denials.empty() ) {
                 return denials.front();
             }
             return pickup_inventory_preset::get_denial( loc );
@@ -945,7 +967,12 @@ class read_inventory_preset: public pickup_inventory_preset
         }
 
         bool is_known( const item_location &loc ) const {
-            return p.has_identified( loc->typeId() );
+            // This is terrible and needs to be removed asap when this entire file is refactored
+            // to use the new avatar class
+            if( const avatar *u = dynamic_cast<const avatar *>( &p ) ) {
+                return u->has_identified( loc->typeId() );
+            }
+            return false;
         }
 
         int get_known_recipes( const islot_book &book ) const {
@@ -961,9 +988,9 @@ class read_inventory_preset: public pickup_inventory_preset
         const player &p;
 };
 
-item_location game_menus::inv::read( player &p )
+item_location game_menus::inv::read( avatar &you )
 {
-    return inv_internal( p, read_inventory_preset( p ),
+    return inv_internal( you, read_inventory_preset( you ),
                          _( "Read" ), 1,
                          _( "You have nothing to read." ) );
 }
@@ -971,7 +998,7 @@ item_location game_menus::inv::read( player &p )
 class steal_inventory_preset : public pickup_inventory_preset
 {
     public:
-        steal_inventory_preset( const player &p, const player &victim ) :
+        steal_inventory_preset( const avatar &p, const player &victim ) :
             pickup_inventory_preset( p ), victim( victim ) {}
 
         bool is_shown( const item_location &loc ) const override {
@@ -982,9 +1009,9 @@ class steal_inventory_preset : public pickup_inventory_preset
         const player &victim;
 };
 
-item_location game_menus::inv::steal( player &p, player &victim )
+item_location game_menus::inv::steal( avatar &you, player &victim )
 {
-    return inv_internal( victim, steal_inventory_preset( p, victim ),
+    return inv_internal( victim, steal_inventory_preset( you, victim ),
                          string_format( _( "Steal from %s" ), victim.name ), -1,
                          string_format( _( "%s's inventory is empty." ), victim.name ) );
 }
@@ -1074,9 +1101,9 @@ class weapon_inventory_preset: public inventory_selector_preset
         const player &p;
 };
 
-item_location game_menus::inv::wield( player &p )
+item_location game_menus::inv::wield( avatar &you )
 {
-    return inv_internal( p, weapon_inventory_preset( p ), _( "Wield item" ), 1,
+    return inv_internal( you, weapon_inventory_preset( you ), _( "Wield item" ), 1,
                          _( "You have nothing to wield." ) );
 }
 
@@ -1322,13 +1349,19 @@ void game_menus::inv::compare( player &p, const cata::optional<tripoint> &offset
 void game_menus::inv::reassign_letter( player &p, item &it )
 {
     while( true ) {
-        const long invlet = popup_getkey(
-                                _( "Enter new letter (press SPACE for none, ESCAPE to cancel)." ) );
+        const int invlet = popup_getkey(
+                               _( "Enter new letter. Press SPACE to clear a manually assigned letter, ESCAPE to cancel." ) );
 
         if( invlet == KEY_ESCAPE ) {
             break;
         } else if( invlet == ' ' ) {
             p.reassign_item( it, 0 );
+            const std::string auto_setting = get_option<std::string>( "AUTO_INV_ASSIGN" );
+            if( auto_setting == "enabled" || ( auto_setting == "favorites" && it.is_favorite ) ) {
+                popup_getkey(
+                    _( "Note: The Auto Inventory Letters setting might still reassign a letter to this item.\n"
+                       "If this is undesired, you may wish to change the setting in Options." ) );
+            }
             break;
         } else if( inv_chars.valid( invlet ) ) {
             p.reassign_item( it, invlet );
@@ -1375,4 +1408,189 @@ void game_menus::inv::swap_letters( player &p )
         reassign_letter( p, *loc );
         g->refresh_all();
     }
+}
+
+static item_location autodoc_internal( player &u, player &patient,
+                                       const inventory_selector_preset &preset,
+                                       int radius )
+{
+    inventory_pick_selector inv_s( u, preset );
+    std::string hint;
+    int drug_count = 0;
+
+    if( patient.has_trait( trait_NOPAIN ) ) {
+        hint = _( "<color_yellow>Patient has Deadened nerves.  Anesthesia unneeded.</color>" );
+    } else if( patient.has_bionic( bionic_id( "bio_painkiller" ) ) ) {
+        hint = _( "<color_yellow>Patient has Sensory Dulling CBM installed.  Anesthesia unneeded.</color>" );
+    } else {
+        std::vector<const item *> a_filter = u.crafting_inventory().items_with( []( const item & it ) {
+            return it.has_quality( quality_id( "ANESTHESIA" ) );
+        } );
+        std::vector<const item *> b_filter = u.crafting_inventory().items_with( []( const item & it ) {
+            return it.has_flag( "ANESTHESIA" ); // legacy
+        } );
+        for( const item *anesthesia_item : a_filter ) {
+            if( anesthesia_item->ammo_remaining() >= 1 ) {
+                drug_count += anesthesia_item->ammo_remaining();
+            }
+        }
+        drug_count += b_filter.size(); // legacy
+        hint = string_format( _( "<color_yellow>Available anesthesia: %i</color>" ), drug_count );
+    }
+
+    inv_s.set_title( string_format( _( "Bionic installation patient: %s" ), patient.get_name() ) );
+    inv_s.set_hint( hint );
+    inv_s.set_display_stats( false );
+
+    std::pair<size_t, size_t> init_pair;
+    bool init_selection = false;
+
+    do {
+        u.inv.restack( u );
+
+        inv_s.clear_items();
+        inv_s.add_character_items( u );
+        inv_s.add_nearby_items( radius );
+
+        if( init_selection ) {
+            inv_s.update();
+            inv_s.select_position( init_pair );
+            init_selection = false;
+        }
+
+        if( inv_s.empty() ) {
+            popup( _( "You don't have any bionics to install." ), PF_GET_KEY );
+            return item_location();
+        }
+
+        item_location location = inv_s.execute();
+
+        if( inv_s.keep_open ) {
+            inv_s.keep_open = false;
+            continue;
+        }
+
+        return location;
+
+    } while( true );
+}
+
+// Menu used by autodoc when installing a bionic
+class bionic_install_preset: public inventory_selector_preset
+{
+    public:
+        bionic_install_preset( player &pl, player &patient ) :
+            p( pl ), pa( patient ) {
+            append_cell( [ this ]( const item_location & loc ) {
+                return get_failure_chance( loc ) ;
+            }, _( "FAILURE CHANCE" ) );
+
+            append_cell( [ this ]( const item_location & loc ) {
+                return get_operation_duration( loc ) ;
+            }, _( "OPERATION DURATION" ) );
+
+            append_cell( [this]( const item_location & loc ) {
+                return get_anesth_amount( loc );
+            }, _( "ANESTHETIC REQUIRED" ) );
+        }
+
+        bool is_shown( const item_location &loc ) const override {
+            return loc->is_bionic();
+        }
+
+        std::string get_denial( const item_location &loc ) const override {
+            const item *it = loc.get_item();
+            const itype *itemtype = it->type;
+            const bionic_id &bid = itemtype->bionic->id;
+
+            if( pa.has_bionic( bid ) ) {
+                return _( "CBM already installed" );
+            } else if( bid->upgraded_bionic &&
+                       !pa.has_bionic( bid->upgraded_bionic ) &&
+                       it->is_upgrade() ) {
+                return _( "No base version installed" );
+            } else if( std::any_of( bid->available_upgrades.begin(),
+                                    bid->available_upgrades.end(),
+                                    std::bind( &player::has_bionic, &pa,
+                                               std::placeholders::_1 ) ) ) {
+                return _( "Superior version installed" );
+            } else if( pa.is_npc() && !bid->npc_usable ) {
+                return _( "CBM not compatible with patient" );
+            }
+
+            return std::string();
+        }
+
+    protected:
+        player &p;
+        player &pa;
+
+    private:
+        // Returns a formatted string of how long the operation will take.
+        std::string get_operation_duration( const item_location &loc ) {
+            const item *it = loc.get_item();
+            const itype *itemtype = it->type;
+            const int difficulty = itemtype->bionic->difficulty;
+
+            // 20 minutes per bionic difficulty.
+            int hours = difficulty / 3;
+            int minutes = ( difficulty % 3 ) * 20;
+            std::string minutes_string = minutes > 0
+                                         ? string_format( _( "%i minutes" ), minutes )
+                                         : std::string();
+
+            if( hours > 0 ) {
+                std::string hours_string = hours >= 2
+                                           ? string_format( _( "%i hours" ), hours )
+                                           : string_format( _( "%i hour" ), hours );
+
+                if( minutes > 0 ) {
+                    return string_format( _( "%s, %s" ), hours_string, minutes_string );
+                } else {
+                    return hours_string;
+                }
+            } else {
+                return minutes_string;
+            }
+        }
+
+        // Failure chance for bionic install. Combines multiple other functions together.
+        std::string get_failure_chance( const item_location &loc ) {
+            const item *it = loc.get_item();
+            const itype *itemtype = it->type;
+            const int difficulty = itemtype->bionic->difficulty;
+            int chance_of_failure = 100;
+            player &installer = p;
+
+            const int adjusted_skill = installer.bionics_adjusted_skill( skill_firstaid,
+                                       skill_computer,
+                                       skill_electronics,
+                                       -1 );
+
+            if( ( get_option < bool > ( "SAFE_AUTODOC" ) ) ||
+                g->u.has_trait( trait_id( "DEBUG_BIONICS" ) ) ) {
+                chance_of_failure = 0;
+            } else {
+                float skill_difficulty_parameter = static_cast<float>( adjusted_skill /
+                                                   ( 4.0 * difficulty ) );
+                chance_of_failure = 100 - static_cast<int>( ( 100 * skill_difficulty_parameter ) /
+                                    ( skill_difficulty_parameter + sqrt( 1 / skill_difficulty_parameter ) ) );
+            }
+
+            return string_format( _( "%i%%" ), chance_of_failure );
+        }
+
+        std::string get_anesth_amount( const item_location &loc ) {
+            const item *it = loc.get_item();
+            const itype *itemtype = it->type;
+            const int difficulty = itemtype->bionic->difficulty;
+            int amount = difficulty * 40;
+
+            return string_format( _( "%i mL" ), amount );
+        }
+};
+
+item_location game_menus::inv::install_bionic( player &p, player &patient )
+{
+    return autodoc_internal( p, patient, bionic_install_preset( p, patient ), 5 );
 }
