@@ -129,6 +129,9 @@ class CppFunction:
     def load_from_xml(cls, xml_memberdef):
         if xml_memberdef.attrib['prot'] == 'public':
             if xml_memberdef.attrib['kind'] == 'function':
+                argsstring = xml_memberdef.find('argsstring').text
+                if argsstring and re.search(r'delete$', argsstring):
+                    return None
                 new_func = CppFunction()
                 new_func.name = xml_memberdef.find('name').text
                 new_func.definition = xml_memberdef.find('definition').text

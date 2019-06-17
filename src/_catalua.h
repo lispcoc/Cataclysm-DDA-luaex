@@ -274,4 +274,33 @@ monster *create_monster( const mtype_id &mon_type, const tripoint &p );
 std::string get_omt_id( const overmap &om, const tripoint &p );
 const ter_t &get_terrain_type( int id );
 
+namespace kaguya
+{
+template <typename T>
+struct lua_type_traits<cata::optional< T >> {
+    typedef cata::optional< T > get_type;
+    typedef const cata::optional< T > &push_type;
+    static bool strictCheckType( lua_State *l, int index ) {
+        return lua_type_traits<T>::strictCheckType( l, index );
+    }
+    static bool checkType( lua_State *l, int index ) {
+        return lua_type_traits<T>::checkType( l, index );
+    }
+    static get_type get( lua_State *l, int index ) {
+        const typename traits::remove_reference<T>::type *pointer = get_const_pointer(
+                    l, index, types::typetag<typename traits::remove_reference<T>::type>() );
+        if( !pointer ) {
+            throw LuaTypeMismatch();
+        }
+        return *pointer;
+    }
+    static int push( lua_State *l, push_type v ) {
+        if( !v ) {
+            lua_pushnil( l );
+            return 1;
+        }
+        return util::object_push( l, *v );
+    }
+};
+}
 #endif
