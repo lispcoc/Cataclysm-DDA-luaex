@@ -1,7 +1,7 @@
 global_references = {
     g = { cpp_name = "g.get()", type = "game *", },
     map = { cpp_name = "&g->m", type = "map *", },
-    player = { cpp_name = "&g->u", type = "player *", },
+    player = { cpp_name = "&g->u", type = "avatar *", },
 }
 
 global_functions = {
@@ -28,4 +28,5 @@ global_functions = {
     { name = "omap_choose_point", cpp_name = "static_cast<tripoint(*)(const tripoint &)>(&ui::omap::choose_point)", rval = "tripoint", args = {"const tripoint &"}, },
     { name = "get_terrain_type", rval = "const ter_t &", args = {"int"}, },
     { name = "handle_liquid", cpp_name = "liquid_handler::handle_liquid", rval = "bool", args = {"item &"}, optional_args = {"item *", "int", "const tripoint *", "const vehicle *", "const int", "const monster *"}, },
+    { name = "get_monster_types", cpp_name = "MonsterGenerator::generator().get_all_mtypes", rval = "const std::vector<mtype>", args = {}, },
 }

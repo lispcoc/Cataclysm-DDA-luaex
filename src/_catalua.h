@@ -228,9 +228,13 @@
 #include "sounds.h"
 #include "magic.h"
 #include "handle_liquid.h"
+#include "faction.h"
+#include "behavior.h"
+#include "avatar.h"
 
 #if defined(TILES)
 #include "cata_tiles.h"
+#include "pixel_minimap.h"
 #endif // TILES
 
 #include "lua/kaguya.hpp"
@@ -239,6 +243,8 @@ using namespace catacurses;
 using namespace om_direction;
 using namespace sounds;
 using namespace Pickup;
+using namespace behavior;
+using namespace npc_factions;
 
 extern std::stringstream lua_output_stream;
 extern std::stringstream lua_error_stream;

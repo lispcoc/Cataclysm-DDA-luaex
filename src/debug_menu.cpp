@@ -298,6 +298,7 @@ static int debug_menu_uilist( bool display_all_entries = true )
                 break;
             case DEBUG_LUA_CONSOLE:
                 action = DEBUG_LUA_CONSOLE;
+                break;
 
             default:
                 return group;

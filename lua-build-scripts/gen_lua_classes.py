@@ -7,6 +7,7 @@ import sys
 cmd_args = sys.argv
 
 valid_types = [
+    'avatar',
     'bool',
     'body_part',
     'std::string',

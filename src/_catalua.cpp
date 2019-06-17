@@ -15,8 +15,8 @@ class lua_iuse_actor : iuse_actor
         ~lua_iuse_actor() override = default;
 
         void load( JsonObject & ) override {}
-        long use( player &, item &it, bool a, const tripoint &pos ) const override {
-            long ret  = 0;
+        int use( player &, item &it, bool a, const tripoint &pos ) const override {
+            int ret  = 0;
             kaguya::State &lua = get_luastate();
             
             try {

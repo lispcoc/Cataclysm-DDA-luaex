@@ -47,7 +47,7 @@ function gen_attributes_wrappar(cls_cpp_name, t, indent)
         elseif is_ref then
             str = str .. indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return &self->' .. name .. '; }\n'
         elseif is_ptr then
-            str = str .. indent .. type_def .. '& __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return *self->' .. name .. '; }\n'
+            str = str .. indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return self->' .. name .. '; }\n'
         end
         if data.writable then
             if data.static then
@@ -299,6 +299,27 @@ for key,_ in pairs(classes) do
     table.insert(keys, key)
 end
 table.sort(keys, function(a,b) return string.lower(a) < string.lower(b) end)
+
+function in_table (t, chk)
+    for _,key in ipairs(t) do
+        if key == chk then
+            return true
+        end
+    end
+    return false
+end
+
+keys_new = {}
+while #keys ~= #keys_new do
+    for _,key in pairs(keys) do
+        parent = classes[key].parent
+        if in_table(keys_new, key) then
+        elseif parent == nil or in_table(keys_new, parent) then
+            table.insert(keys_new, key)
+        end
+    end
+end
+keys = keys_new
 
 string_ids = {}
 

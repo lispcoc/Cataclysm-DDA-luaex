@@ -141,6 +141,10 @@ LUA = 1
 LUA_DIR = lua
 LUASRC_DIR = $(SRC_DIR)/$(LUA_DIR)
 LUA_BINARY = lua
+WARNINGS = \
+  -Werror -Wall -Wextra \
+  -Woverloaded-virtual \
+  -Wpedantic
 #
 # LUAEX mod end
 #--------------------------------------
