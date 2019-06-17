@@ -30,6 +30,8 @@
 #include "vehicle.h"
 #include "vpart_position.h"
 
+#include "_catalua.h"
+
 const efftype_id effect_contacts( "contacts" );
 const efftype_id effect_sleep( "sleep" );
 const efftype_id effect_slept_through_alarm( "slept_through_alarm" );
@@ -378,6 +380,14 @@ void avatar::on_mission_assignment( mission &new_mission )
 {
     active_missions.push_back( &new_mission );
     set_active_mission( new_mission );
+
+    try {
+        get_luastate()["mod_callback"]( "on_player_mission_assignment",
+                                        getID(),
+                                        new_mission.get_id() );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
 }
 
 void avatar::on_mission_finished( mission &cur_mission )
@@ -402,6 +412,14 @@ void avatar::on_mission_finished( mission &cur_mission )
         } else {
             active_mission = active_missions.front();
         }
+    }
+
+    try {
+        get_luastate()["mod_callback"]( "on_player_mission_finished",
+                                        getID(),
+                                        cur_mission.get_id() );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
     }
 }
 
@@ -910,6 +928,17 @@ void avatar::do_read( item &book )
                         add_memorial_log( pgettext( "memorial_male", "Reached skill level %1$d in %2$s." ),
                                           pgettext( "memorial_female", "Reached skill level %1$d in %2$s." ),
                                           skill_level.level(), skill_name );
+                    }
+                    try {
+                        const std::string skill_increase_source = "book";
+                        get_luastate()["mod_callback"]( "on_player_skill_increased",
+                                                        getID(),
+                                                        skill_increase_source,
+                                                        skill.str(),
+                                                        originalSkillLevel + 1 );
+                        get_luastate()["mod_callback"]( "on_skill_increased" ); // Legacy callback
+                    } catch( const std::exception &err ) {
+                        debugmsg( _( "Lua error: %1$s" ), err.what() );
                     }
                 } else {
                     add_msg( m_good, _( "%s increases their %s level." ), learner->disp_name(), skill_name );
