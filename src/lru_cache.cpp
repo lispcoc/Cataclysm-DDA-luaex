@@ -1,6 +1,6 @@
 #include "lru_cache.h"
 
-#include <stddef.h>
+#include <cstddef>
 #include <iterator>
 
 #include "map_memory.h"
@@ -69,4 +69,4 @@ const std::list<typename lru_cache<Key, Value>::Pair> &lru_cache<Key, Value>::li
 
 // explicit template initialization for lru_cache of all types
 template class lru_cache<tripoint, memorized_terrain_tile>;
-template class lru_cache<tripoint, long>;
+template class lru_cache<tripoint, int>;

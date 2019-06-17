@@ -1,7 +1,7 @@
 #include "explosion.h" // IWYU pragma: associated
 #include "fragment_cloud.h" // IWYU pragma: associated
 
-#include <stddef.h>
+#include <cstddef>
 #include <algorithm>
 #include <queue>
 #include <random>
@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_utility.h"
@@ -417,7 +418,7 @@ static std::vector<tripoint> shrapnel( const tripoint &src, int power,
                     };
                     std::string impact_count = std::find_if(
                                                    impact_count_descriptions.begin(), impact_count_descriptions.end(),
-                    [total_hits]( std::pair<int, std::string> desc ) {
+                    [total_hits]( const std::pair<int, std::string> &desc ) {
                         return desc.first >= total_hits;
                     } )->second;
                     std::string damage_description = ( damage_taken > 0 ) ?
@@ -719,7 +720,7 @@ void emp_blast( const tripoint &p )
     }
     // Drain any items of their battery charge
     for( auto &it : g->m.i_at( x, y ) ) {
-        if( it.is_tool() && it.ammo_type() == ammotype( "battery" ) ) {
+        if( it.is_tool() && it.ammo_current() == "battery" ) {
             it.charges = 0;
         }
     }

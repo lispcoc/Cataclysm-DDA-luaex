@@ -1,8 +1,8 @@
 #include "dialogue.h" // IWYU pragma: associated
 
-#include <limits.h>
-#include <math.h>
-#include <stddef.h>
+#include <climits>
+#include <cmath>
+#include <cstddef>
 #include <algorithm>
 #include <sstream>
 #include <string>
@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 #include "ammo.h"
+#include "avatar.h"
 #include "cata_utility.h"
 // needed for the workaround for the std::to_string bug in some compilers
 #include "clzones.h"
@@ -24,6 +25,7 @@
 #include "game.h"
 #include "help.h"
 #include "input.h"
+#include "item.h"
 #include "item_category.h"
 #include "itype.h"
 #include "json.h"
@@ -90,6 +92,7 @@ const efftype_id effect_narcosis( "narcosis" );
 const efftype_id effect_sleep( "sleep" );
 
 static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
+static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
 
 const zone_type_id zone_no_investigate( "NPC_NO_INVESTIGATE" );
 const zone_type_id zone_investigate_only( "NPC_INVESTIGATE_ONLY" );
@@ -99,7 +102,7 @@ static std::map<std::string, json_talk_topic> json_talk_topics;
 // Every OWED_VAL that the NPC owes you counts as +1 towards convincing
 #define OWED_VAL 1000
 
-#define dbg(x) DebugLog((DebugLevel)(x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
+#define dbg(x) DebugLog((x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
 
 int topic_category( const talk_topic &the_topic );
 
@@ -123,8 +126,8 @@ const std::string &talk_trial::name() const
 /** Time (in turns) and cost (in cent) for training: */
 time_duration calc_skill_training_time( const npc &p, const skill_id &skill )
 {
-    return 1_minutes + 5_turns * g->u.get_skill_level( skill ) -
-           1_turns * p.get_skill_level( skill );
+    return 1_minutes + 30_seconds * g->u.get_skill_level( skill ) -
+           1_seconds * p.get_skill_level( skill );
 }
 
 int calc_skill_training_cost( const npc &p, const skill_id &skill )
@@ -154,7 +157,7 @@ int calc_ma_style_training_cost( const npc &p, const matype_id & /* id */ )
 }
 
 // Rescale values from "mission scale" to "opinion scale"
-int cash_to_favor( const npc &, int cash )
+int npc_trading::cash_to_favor( const npc &, int cash )
 {
     // TODO: It should affect different NPCs to a different degree
     // Square root of mission value in dollars
@@ -185,8 +188,8 @@ enum npc_chat_menu {
 // given a vector of NPCs, presents a menu to allow a player to pick one.
 // everyone == true adds another entry at the end to allow selecting all listed NPCs
 // this implies a return value of npc_list.size() means "everyone"
-int npc_select_menu( const std::vector<npc *> &npc_list, const std::string prompt,
-                     const bool everyone = true )
+static int npc_select_menu( const std::vector<npc *> &npc_list, const std::string &prompt,
+                            const bool everyone = true )
 {
     if( npc_list.empty() ) {
         return -1;
@@ -209,14 +212,15 @@ int npc_select_menu( const std::vector<npc *> &npc_list, const std::string promp
 
 }
 
-void npc_batch_override_toggle( const std::vector<npc *> npc_list, ally_rule rule, bool state )
+static void npc_batch_override_toggle(
+    const std::vector<npc *> &npc_list, ally_rule rule, bool state )
 {
     for( npc *p : npc_list ) {
         p->rules.toggle_specific_override_state( rule, state );
     }
 }
 
-void npc_temp_orders_menu( const std::vector<npc *> &npc_list )
+static void npc_temp_orders_menu( const std::vector<npc *> &npc_list )
 {
     if( npc_list.empty() ) {
         return;
@@ -305,7 +309,6 @@ void npc_temp_orders_menu( const std::vector<npc *> &npc_list )
 
 }
 
-
 void game::chat()
 {
     int volume = g->u.get_shout_volume();
@@ -326,6 +329,12 @@ void game::chat()
                guy.can_hear( u.pos(), volume );
     } );
     const int guard_count = guards.size();
+
+    if( g->u.has_trait( trait_PROF_FOODP ) && !( g->u.is_wearing( itype_id( "foodperson_mask" ) ) ||
+            g->u.is_wearing( itype_id( "foodperson_mask_on" ) ) ) ) {
+        g->u.add_msg_if_player( m_warning, _( "You can't speak without your face!" ) );
+        return;
+    }
 
     uilist nmenu;
     nmenu.text = std::string( _( "What do you want to do?" ) );
@@ -473,7 +482,7 @@ void npc::handle_sound( int priority, const std::string &description, int heard_
 
     const sounds::sound_t spriority = static_cast<sounds::sound_t>( priority );
     bool player_ally = g->u.pos() == spos && is_player_ally();
-    npc *const sound_source = g->critter_at<npc>( spos );
+    player *const sound_source = g->critter_at<player>( spos );
     bool npc_ally = sound_source && sound_source->is_npc() && is_ally( *sound_source );
 
     if( ( player_ally || npc_ally ) && spriority == sounds::sound_t::order ) {
@@ -521,9 +530,9 @@ void npc::handle_sound( int priority, const std::string &description, int heard_
         if( spriority == sounds::sound_t::movement && !in_vehicle ) {
             warn_about( "movement_noise", rng( 1, 10 ) * 1_minutes, description );
         } else if( spriority > sounds::sound_t::movement ) {
-            if( !( player_ally || npc_ally ) && ( spriority == sounds::sound_t::speech ||
-                                                  spriority == sounds::sound_t::alert ||
-                                                  spriority == sounds::sound_t::order ) ) {
+            if( ( spriority == sounds::sound_t::speech || spriority == sounds::sound_t::alert ||
+                  spriority == sounds::sound_t::order ) && sound_source &&
+                !has_faction_relationship( *sound_source, npc_factions::knows_your_voice ) ) {
                 warn_about( "speech_noise", rng( 1, 10 ) * 1_minutes );
             } else if( spriority > sounds::sound_t::activity ) {
                 warn_about( "combat_noise", rng( 1, 10 ) * 1_minutes );
@@ -596,17 +605,17 @@ void npc::talk_to_u( bool text_only, bool radio_contact )
             d.missions_assigned.push_back( mission );
         }
     }
-
     d.add_topic( chatbin.first_topic );
     if( radio_contact ) {
         d.add_topic( "TALK_RADIO" );
         d.by_radio = true;
     } else if( is_leader() ) {
         d.add_topic( "TALK_LEADER" );
-    } else if( is_player_ally() && is_walking_with() ) {
+    } else if( is_player_ally() && ( is_walking_with() || has_activity() ) ) {
         d.add_topic( "TALK_FRIEND" );
+    } else if( get_attitude() == NPCATT_RECOVER_GOODS ) {
+        d.add_topic( "TALK_STOLE_ITEM" );
     }
-
     int most_difficult_mission = 0;
     for( auto &mission : chatbin.missions ) {
         const auto &type = mission->get_type();
@@ -672,6 +681,16 @@ void npc::talk_to_u( bool text_only, bool radio_contact )
         }
     }
 
+    if( g->u.has_trait( trait_PROF_FOODP ) && !( g->u.is_wearing( itype_id( "foodperson_mask" ) ) ||
+            g->u.is_wearing( itype_id( "foodperson_mask_on" ) ) ) ) {
+        d.add_topic( "TALK_NOFACE" );
+    }
+
+    if( has_trait( trait_PROF_FOODP ) && !( is_wearing( itype_id( "foodperson_mask" ) ) ||
+                                            is_wearing( itype_id( "foodperson_mask_on" ) ) ) ) {
+        d.add_topic( "TALK_NPC_NOFACE" );
+    }
+
     decide_needs();
 
     dialogue_window d_win;
@@ -724,7 +743,13 @@ std::string dialogue::dynamic_line( const talk_topic &the_topic ) const
         }
     }
 
-    if( topic == "TALK_DEAF" ) {
+    if( topic == "TALK_NPC_NOFACE" ) {
+        return string_format( _( "&%s stays silent." ), beta->name );
+    }
+
+    if( topic == "TALK_NOFACE" ) {
+        return _( "&You can't talk without your face." );
+    } else if( topic == "TALK_DEAF" ) {
         return _( "&You are deaf and can't talk." );
 
     } else if( topic == "TALK_DEAF_ANGRY" ) {
@@ -1082,11 +1107,13 @@ void dialogue::gen_responses( const talk_topic &the_topic )
         }
         for( auto &trained : trainable ) {
             const int cost = calc_skill_training_cost( *p, trained );
-            const int cur_level = g->u.get_skill_level( trained );
-            //~Skill name: current level -> next level (cost in dollars)
-            std::string text = string_format( cost > 0 ? _( "%s: %d -> %d (cost $%d)" ) :
-                                              _( "%s: %d -> %d" ),
-                                              trained.obj().name(), cur_level, cur_level + 1,
+            const SkillLevel skill_level_obj = g->u.get_skill_level_object( trained );
+            const int cur_level = skill_level_obj.level();
+            const int cur_level_exercise = skill_level_obj.exercise();
+            //~Skill name: current level (exercise) -> next level (cost in dollars)
+            std::string text = string_format( cost > 0 ? _( "%s: %d (%d%%) -> %d (cost $%d)" ) :
+                                              _( "%s: %d (%d%%) -> %d" ),
+                                              trained.obj().name(), cur_level, cur_level_exercise, cur_level + 1,
                                               cost / 100 );
             add_response( text, "TALK_TRAIN_START", trained );
         }
@@ -1106,7 +1133,7 @@ void dialogue::gen_responses( const talk_topic &the_topic )
     }
 }
 
-int parse_mod( const dialogue &d, const std::string &attribute, const int factor )
+static int parse_mod( const dialogue &d, const std::string &attribute, const int factor )
 {
     player &u = *d.alpha;
     npc &p = *d.beta;
@@ -1348,8 +1375,17 @@ void parse_tags( std::string &phrase, const player &u, const player &me, const i
             if( !me.weapon.is_gun() ) {
                 phrase.replace( fa, l, _( "BADAMMO" ) );
             } else {
-                phrase.replace( fa, l, me.weapon.ammo_type()->name() );
+                phrase.replace( fa, l, me.weapon.ammo_current() );
             }
+        } else if( tag == "<current_activity>" ) {
+            std::string activity_name;
+            const npc *guy = dynamic_cast<const npc *>( &me );
+            if( !guy->current_activity.empty() ) {
+                activity_name = guy->current_activity;
+            } else {
+                activity_name = "doing this and that";
+            }
+            phrase.replace( fa, l, activity_name );
         } else if( tag == "<punc>" ) {
             switch( rng( 0, 2 ) ) {
                 case 0:
@@ -1507,7 +1543,7 @@ talk_topic dialogue::opt( dialogue_window &d_win, const talk_topic &topic )
         response_lines.push_back( responses[i].create_option_line( *this, 'a' + i ) );
     }
 
-    long ch = text_only ? 'a' + responses.size() - 1 : ' ';
+    int ch = text_only ? 'a' + responses.size() - 1 : ' ';
     bool okay;
     do {
         d_win.refresh_response_display();
@@ -1531,7 +1567,7 @@ talk_topic dialogue::opt( dialogue_window &d_win, const talk_topic &topic )
                     ch -= 'a';
                     break;
             }
-        } while( ( ch < 0 || ch >= static_cast<long>( responses.size() ) ) );
+        } while( ( ch < 0 || ch >= static_cast<int>( responses.size() ) ) );
         okay = true;
         std::set<dialogue_consequence> consequences = responses[ch].get_consequences( *this );
         if( consequences.count( dialogue_consequence::hostile ) > 0 ) {
@@ -1602,7 +1638,7 @@ talk_trial::talk_trial( JsonObject jo )
     }
 }
 
-talk_topic load_inline_topic( JsonObject jo )
+static talk_topic load_inline_topic( JsonObject jo )
 {
     const std::string id = jo.get_string( "id" );
     json_talk_topics[id].load( jo );
@@ -1633,7 +1669,8 @@ talk_effect_fun_t::talk_effect_fun_t( std::function<void( const dialogue &d )> f
 }
 
 // throws an error on failure, so no need to return
-std::string get_talk_varname( JsonObject jo, const std::string &member, bool check_value = true )
+static std::string get_talk_varname( JsonObject jo, const std::string &member,
+                                     bool check_value = true )
 {
     if( !jo.has_string( "type" ) || !jo.has_string( "context" ) ||
         ( check_value && !jo.has_string( "value" ) ) ) {
@@ -1745,24 +1782,27 @@ void talk_effect_fun_t::set_u_buy_item( const std::string &item_name, int cost, 
     function = [item_name, cost, count, container_name]( const dialogue & d ) {
         npc &p = *d.beta;
         player &u = *d.alpha;
+        if( !npc_trading::pay_npc( p, cost ) ) {
+            popup( _( "You can't afford it!" ) );
+            return;
+        }
         if( container_name.empty() ) {
             item new_item = item( item_name, calendar::turn, count );
             u.i_add( new_item );
             if( count == 1 ) {
                 //~ %1%s is the NPC name, %2$s is an item
-                popup( _( "%1$s gives you a %2$s" ), p.name, new_item.tname() );
+                popup( _( "%1$s gives you a %2$s." ), p.name, new_item.tname() );
             } else {
                 //~ %1%s is the NPC name, %2$d is a number of items, %3$s are items
-                popup( _( "%1$s gives you %2$d %3$s" ), p.name, count, new_item.tname() );
+                popup( _( "%1$s gives you %2$d %3$s." ), p.name, count, new_item.tname() );
             }
         } else {
             item container( container_name, calendar::turn );
             container.emplace_back( item_name, calendar::turn, count );
             u.i_add( container );
             //~ %1%s is the NPC name, %2$s is an item
-            popup( _( "%1$s gives you a %2$s" ), p.name, container.tname() );
+            popup( _( "%1$s gives you a %2$s." ), p.name, container.tname() );
         }
-        u.cash -= cost;
     };
 }
 
@@ -1785,12 +1825,12 @@ void talk_effect_fun_t::set_u_sell_item( const std::string &item_name, int cost,
 
         if( count == 1 ) {
             //~ %1%s is the NPC name, %2$s is an item
-            popup( _( "You give %1$s a %2$s" ), p.name, old_item.tname() );
+            popup( _( "You give %1$s a %2$s." ), p.name, old_item.tname() );
         } else {
             //~ %1%s is the NPC name, %2$d is a number of items, %3$s are items
-            popup( _( "You give %1$s %2$d %3$s" ), p.name, count, old_item.tname() );
+            popup( _( "You give %1$s %2$d %3$s." ), p.name, count, old_item.tname() );
         }
-        u.cash += cost;
+        p.op_of_u.owed += cost;
     };
 }
 
@@ -1838,8 +1878,8 @@ void talk_effect_fun_t::set_remove_item_with( JsonObject jo, const std::string &
 void talk_effect_fun_t::set_u_spend_cash( int amount )
 {
     function = [amount]( const dialogue & d ) {
-        player &u = *d.alpha;
-        u.cash -= amount;
+        npc &np = *d.beta;
+        npc_trading::pay_npc( np, amount );
     };
 }
 
@@ -1939,6 +1979,26 @@ void talk_effect_fun_t::set_npc_aim_rule( const std::string &setting )
     };
 }
 
+void talk_effect_fun_t::set_npc_cbm_reserve_rule( const std::string &setting )
+{
+    function = [setting]( const dialogue & d ) {
+        auto rule = cbm_reserve_strs.find( setting );
+        if( rule != cbm_reserve_strs.end() ) {
+            d.beta->rules.cbm_reserve = rule->second;
+        }
+    };
+}
+
+void talk_effect_fun_t::set_npc_cbm_recharge_rule( const std::string &setting )
+{
+    function = [setting]( const dialogue & d ) {
+        auto rule = cbm_recharge_strs.find( setting );
+        if( rule != cbm_recharge_strs.end() ) {
+            d.beta->rules.cbm_recharge = rule->second;
+        }
+    };
+}
+
 void talk_effect_fun_t::set_mapgen_update( JsonObject jo, const std::string &member )
 {
     mission_target_params target_params = mission_util::parse_mission_om_target( jo );
@@ -1976,8 +2036,34 @@ void talk_effect_fun_t::set_bulk_trade_accept( bool is_trade, bool is_npc )
         item tmp( d.cur_item );
         tmp.charges = seller_has;
         if( is_trade ) {
-            int price = tmp.price( true ) * ( is_npc ? -1 : 1 );
-            g->u.cash += price;
+            int price = tmp.price( true ) * ( is_npc ? -1 : 1 ) + d.beta->op_of_u.owed;
+            if( d.beta->my_fac && !d.beta->my_fac->currency.empty() ) {
+                const itype_id &pay_in = d.beta->my_fac->currency;
+                item pay( pay_in );
+                if( d.beta->value( pay ) > 0 ) {
+                    int required = price / d.beta->value( pay );
+                    int buyer_has = required;
+                    if( is_npc ) {
+                        buyer_has = std::min( buyer_has, buyer->charges_of( pay_in ) );
+                        buyer->use_charges( pay_in, buyer_has );
+                    } else {
+                        if( buyer_has == 1 ) {
+                            //~ %1%s is the NPC name, %2$s is an item
+                            popup( _( "%1$s gives you a %2$s." ), d.beta->disp_name(),
+                                   pay.tname() );
+                        } else if( buyer_has > 1 ) {
+                            //~ %1%s is the NPC name, %2$d is a number of items, %3$s are items
+                            popup( _( "%1$s gives you %2$d %3$s." ), d.beta->disp_name(), buyer_has,
+                                   pay.tname() );
+                        }
+                    }
+                    for( int i = 0; i < buyer_has; i++ ) {
+                        seller->i_add( pay );
+                        price -= d.beta->value( pay );
+                    }
+                }
+                d.beta->op_of_u.owed += price;
+            }
         }
         seller->use_charges( d.cur_item, seller_has );
         buyer->i_add( tmp );
@@ -2037,7 +2123,7 @@ talk_topic talk_effect_t::apply( dialogue &d ) const
     d.beta->op_of_u += opinion;
     if( miss && ( mission_opinion.trust || mission_opinion.fear ||
                   mission_opinion.value || mission_opinion.anger ) ) {
-        int m_value = cash_to_favor( *d.beta, miss->get_value() );
+        int m_value = npc_trading::cash_to_favor( *d.beta, miss->get_value() );
         npc_opinion mod = npc_opinion( mission_opinion.trust ?
                                        m_value / mission_opinion.trust : 0,
                                        mission_opinion.fear ?
@@ -2176,6 +2262,12 @@ void talk_effect_t::parse_sub_effect( JsonObject jo )
     } else if( jo.has_string( "set_npc_aim_rule" ) ) {
         const std::string setting = jo.get_string( "set_npc_aim_rule" );
         subeffect_fun.set_npc_aim_rule( setting );
+    } else if( jo.has_string( "set_npc_cbm_reserve_rule" ) ) {
+        const std::string setting = jo.get_string( "set_npc_cbm_reserve_rule" );
+        subeffect_fun.set_npc_cbm_reserve_rule( setting );
+    } else if( jo.has_string( "set_npc_cbm_recharge_rule" ) ) {
+        const std::string setting = jo.get_string( "set_npc_cbm_recharge_rule" );
+        subeffect_fun.set_npc_cbm_recharge_rule( setting );
     } else if( jo.has_member( "mapgen_update" ) ) {
         subeffect_fun.set_mapgen_update( jo, "mapgen_update" );
     } else {
@@ -2195,9 +2287,14 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, JsonObjec
             WRAP( clear_mission ),
             WRAP( mission_reward ),
             WRAP( start_trade ),
+            WRAP( sort_loot ),
+            WRAP( do_construction ),
             WRAP( assign_guard ),
             WRAP( stop_guard ),
             WRAP( start_camp ),
+            WRAP( buy_cow ),
+            WRAP( buy_chicken ),
+            WRAP( buy_horse ),
             WRAP( recover_camp ),
             WRAP( remove_overseer ),
             WRAP( basecamp_mission ),
@@ -2208,6 +2305,8 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, JsonObjec
             WRAP( give_equipment ),
             WRAP( give_aid ),
             WRAP( give_all_aid ),
+            WRAP( barber_beard ),
+            WRAP( barber_hair ),
             WRAP( buy_haircut ),
             WRAP( buy_shave ),
             WRAP( morale_chat ),
@@ -2227,11 +2326,14 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, JsonObjec
             WRAP( flee ),
             WRAP( leave ),
             WRAP( stop_following ),
+            WRAP( revert_activity ),
             WRAP( goto_location ),
             WRAP( stranger_neutral ),
             WRAP( start_mugging ),
             WRAP( player_leaving ),
             WRAP( drop_weapon ),
+            WRAP( drop_stolen_item ),
+            WRAP( remove_stolen_status ),
             WRAP( player_weapon_away ),
             WRAP( player_weapon_drop ),
             WRAP( lead_to_safety ),
@@ -2469,6 +2571,21 @@ void conditional_t::set_has_trait_flag( JsonObject &jo, const std::string &membe
             return actor->crossed_threshold();
         }
         return actor->has_trait_flag( trait_flag_to_check );
+    };
+}
+
+void conditional_t::set_has_activity( bool is_npc )
+{
+    condition = [is_npc]( const dialogue & d ) {
+        player *actor = d.alpha;
+        if( is_npc ) {
+            return d.beta->has_activity();
+        } else {
+            if( !actor->activity.is_null() ) {
+                return true;
+            }
+        }
+        return false;
     };
 }
 
@@ -2711,25 +2828,25 @@ void conditional_t::set_npc_role_nearby( JsonObject &jo )
 
 void conditional_t::set_npc_allies( JsonObject &jo )
 {
-    const unsigned long min_allies = jo.get_int( "npc_allies" );
+    const unsigned int min_allies = jo.get_int( "npc_allies" );
     condition = [min_allies]( const dialogue & ) {
         return g->allies().size() >= min_allies;
     };
 }
 
-void conditional_t::set_npc_service( JsonObject &jo )
+void conditional_t::set_u_has_cash( JsonObject &jo )
 {
-    const unsigned long service_price = jo.get_int( "npc_service" );
-    condition = [service_price]( const dialogue & d ) {
-        return !d.beta->has_effect( effect_currently_busy ) && d.alpha->cash >= service_price;
+    const int min_cash = jo.get_int( "u_has_cash" );
+    condition = [min_cash]( const dialogue & d ) {
+        return d.alpha->cash >= min_cash;
     };
 }
 
-void conditional_t::set_u_has_cash( JsonObject &jo )
+void conditional_t::set_u_are_owed( JsonObject &jo )
 {
-    const unsigned long min_cash = jo.get_int( "u_has_cash" );
-    condition = [min_cash]( const dialogue & d ) {
-        return d.alpha->cash >= min_cash;
+    const int min_debt = jo.get_int( "u_are_owed" );
+    condition = [min_debt]( const dialogue & d ) {
+        return d.beta->op_of_u.owed >= min_debt;
     };
 }
 
@@ -2752,6 +2869,30 @@ void conditional_t::set_npc_engagement_rule( JsonObject &jo )
         auto rule = combat_engagement_strs.find( setting );
         if( rule != combat_engagement_strs.end() ) {
             return d.beta->rules.engagement == rule->second;
+        }
+        return false;
+    };
+}
+
+void conditional_t::set_npc_cbm_reserve_rule( JsonObject &jo )
+{
+    const std::string &setting = jo.get_string( "npc_cbm_reserve_rule" );
+    condition = [setting]( const dialogue & d ) {
+        auto rule = cbm_reserve_strs.find( setting );
+        if( rule != cbm_reserve_strs.end() ) {
+            return d.beta->rules.cbm_reserve == rule->second;
+        }
+        return false;
+    };
+}
+
+void conditional_t::set_npc_cbm_recharge_rule( JsonObject &jo )
+{
+    const std::string &setting = jo.get_string( "npc_cbm_recharge_rule" );
+    condition = [setting]( const dialogue & d ) {
+        auto rule = cbm_recharge_strs.find( setting );
+        if( rule != cbm_recharge_strs.end() ) {
+            return d.beta->rules.cbm_recharge == rule->second;
         }
         return false;
     };
@@ -2783,7 +2924,7 @@ void conditional_t::set_npc_override( JsonObject &jo )
 
 void conditional_t::set_days_since( JsonObject &jo )
 {
-    const unsigned long days = jo.get_int( "days_since_cataclysm" );
+    const unsigned int days = jo.get_int( "days_since_cataclysm" );
     condition = [days]( const dialogue & ) {
         return to_turn<int>( calendar::turn ) >= DAYS( days );
     };
@@ -2974,6 +3115,24 @@ void conditional_t::set_is_driving( bool is_npc )
     };
 }
 
+void conditional_t::set_has_stolen_item( bool is_npc )
+{
+    ( void )is_npc;
+    condition = []( const dialogue & d ) {
+        player *actor = d.alpha;
+        npc &p = *d.beta;
+        bool found_in_inv = false;
+        for( auto &elem : actor->inv_dump() ) {
+            if( elem->get_old_owner() ) {
+                if( elem->get_old_owner()->id.str() == p.my_fac->id.str() ) {
+                    found_in_inv = true;
+                }
+            }
+        }
+        return found_in_inv;
+    };
+}
+
 void conditional_t::set_is_day()
 {
     condition = []( const dialogue & ) {
@@ -3095,6 +3254,8 @@ conditional_t::conditional_t( JsonObject jo )
         set_has_trait_flag( jo, "npc_has_trait_flag", true );
     } else if( jo.has_member( "npc_has_class" ) ) {
         set_npc_has_class( jo );
+    } else if( jo.has_string( "npc_has_activity" ) ) {
+        set_has_activity( is_npc );
     } else if( jo.has_string( "u_has_mission" ) ) {
         set_u_has_mission( jo );
     } else if( jo.has_int( "u_has_strength" ) ) {
@@ -3154,13 +3315,19 @@ conditional_t::conditional_t( JsonObject jo )
     } else if( jo.has_int( "npc_allies" ) ) {
         set_npc_allies( jo );
     } else if( jo.has_int( "npc_service" ) ) {
-        set_npc_service( jo );
+        set_npc_available();
     } else if( jo.has_int( "u_has_cash" ) ) {
         set_u_has_cash( jo );
+    } else if( jo.has_int( "u_are_owed" ) ) {
+        set_u_are_owed( jo );
     } else if( jo.has_string( "npc_aim_rule" ) ) {
         set_npc_aim_rule( jo );
     } else if( jo.has_string( "npc_engagement_rule" ) ) {
         set_npc_engagement_rule( jo );
+    } else if( jo.has_string( "npc_cbm_reserve_rule" ) ) {
+        set_npc_cbm_reserve_rule( jo );
+    } else if( jo.has_string( "npc_cbm_recharge_rule" ) ) {
+        set_npc_cbm_recharge_rule( jo );
     } else if( jo.has_string( "npc_rule" ) ) {
         set_npc_rule( jo );
     } else if( jo.has_string( "npc_override" ) ) {
@@ -3241,8 +3408,12 @@ conditional_t::conditional_t( const std::string &type )
         set_is_driving();
     } else if( type == "npc_driving" ) {
         set_is_driving( is_npc );
+    } else if( type == "npc_has_activity" ) {
+        set_has_activity( is_npc );
     } else if( type == "is_day" ) {
         set_is_day();
+    } else if( type == "u_has_stolen_item" ) {
+        set_has_stolen_item( is_npc );
     } else if( type == "is_outside" ) {
         set_is_outside();
     } else if( type == "u_has_camp" ) {
@@ -3302,6 +3473,25 @@ bool json_talk_response::gen_repeat_response( dialogue &d, const itype_id &item_
     return false;
 }
 
+static std::string translate_gendered_line(
+    const std::string &line,
+    const std::vector<std::string> &relevant_genders,
+    const dialogue &d
+)
+{
+    GenderMap gender_map;
+    for( const std::string &subject : relevant_genders ) {
+        if( subject == "npc" ) {
+            gender_map[subject] = d.beta->get_grammatical_genders();
+        } else if( subject == "u" ) {
+            gender_map[subject] = d.alpha->get_grammatical_genders();
+        } else {
+            debugmsg( "Unsupported subject '%s' for grammatical gender in dialogue", subject );
+        }
+    }
+    return gettext_gendered( gender_map, line );
+}
+
 dynamic_line_t dynamic_line_t::from_member( JsonObject &jo, const std::string &member_name )
 {
     if( jo.has_array( member_name ) ) {
@@ -3354,6 +3544,25 @@ dynamic_line_t::dynamic_line_t( JsonObject jo )
             std::string tmp = d.reason;
             d.reason.clear();
             return tmp;
+        };
+    } else if( jo.has_string( "gendered_line" ) ) {
+        const std::string line = jo.get_string( "gendered_line" );
+        if( !jo.has_array( "relevant_genders" ) ) {
+            jo.throw_error(
+                "dynamic line with \"gendered_line\" must also have \"relevant_genders\"" );
+        }
+        JsonArray ja = jo.get_array( "relevant_genders" );
+        std::vector<std::string> relevant_genders;
+        while( ja.has_more() ) {
+            relevant_genders.push_back( ja.next_string() );
+        }
+        for( const std::string &gender : relevant_genders ) {
+            if( gender != "npc" && gender != "u" ) {
+                jo.throw_error( "Unexpected subject in relevant_genders; expected 'npc' or 'u'" );
+            }
+        }
+        function = [line, relevant_genders]( const dialogue & d ) {
+            return translate_gendered_line( line, relevant_genders, d );
         };
     } else {
         conditional_t dcondition;
@@ -3591,7 +3800,7 @@ enum consumption_result {
 };
 
 // Returns true if we destroyed the item through consumption
-consumption_result try_consume( npc &p, item &it, std::string &reason )
+static consumption_result try_consume( npc &p, item &it, std::string &reason )
 {
     // TODO: Unify this with 'player::consume_item()'
     bool consuming_contents = it.is_container() && !it.contents.empty();
@@ -3666,7 +3875,8 @@ std::string give_item_to( npc &p, bool allow_use, bool allow_carry )
         return _( "Changed your mind?" );
     }
 
-    if( &given == &g->u.weapon && given.has_flag( "NO_UNWIELD" ) ) {
+    if( ( &given == &g->u.weapon && given.has_flag( "NO_UNWIELD" ) ) || ( g->u.is_worn( given ) &&
+            given.has_flag( "NO_TAKEOFF" ) ) ) {
         // Bionic weapon or shackles
         return _( "How?" );
     }
@@ -3692,8 +3902,8 @@ std::string give_item_to( npc &p, bool allow_use, bool allow_carry )
     }
 
     bool taken = false;
-    long our_ammo = p.ammo_count_for( p.weapon );
-    long new_ammo = p.ammo_count_for( given );
+    int our_ammo = p.ammo_count_for( p.weapon );
+    int new_ammo = p.ammo_count_for( given );
     const double new_weapon_value = p.weapon_value( given, new_ammo );
     const double cur_weapon_value = p.weapon_value( p.weapon, our_ammo );
     if( allow_use ) {

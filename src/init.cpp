@@ -1,6 +1,6 @@
 #include "init.h"
 
-#include <stddef.h>
+#include <cstddef>
 #include <cassert>
 #include <fstream>
 #include <sstream> // for throwing errors
@@ -14,6 +14,7 @@
 #include "activity_type.h"
 #include "ammo.h"
 #include "anatomy.h"
+#include "behavior.h"
 #include "bionics.h"
 #include "construction.h"
 #include "crafting_gui.h"
@@ -24,6 +25,7 @@
 #include "faction.h"
 #include "fault.h"
 #include "filesystem.h"
+#include "field_type.h"
 #include "flag.h"
 #include "gates.h"
 #include "harvest.h"
@@ -56,6 +58,7 @@
 #include "requirements.h"
 #include "rotatable_symbols.h"
 #include "scenario.h"
+#include "sdltiles.h"
 #include "skill.h"
 #include "skill_boost.h"
 #include "sounds.h"
@@ -72,10 +75,6 @@
 #include "bodypart.h"
 #include "translations.h"
 #include "type_id.h"
-
-#if defined(TILES)
-void load_tileset();
-#endif
 
 DynamicDataLoader::DynamicDataLoader()
 {
@@ -132,7 +131,7 @@ void DynamicDataLoader::load_deferred( deferred_json &data )
     }
 }
 
-void load_ignored_type( JsonObject &jo )
+static void load_ignored_type( JsonObject &jo )
 {
     // This does nothing!
     // This function is used for types that are to be ignored
@@ -182,6 +181,7 @@ void DynamicDataLoader::initialize()
     add( "EXTERNAL_OPTION", &load_external_option );
     add( "json_flag", &json_flag::load );
     add( "fault", &fault::load_fault );
+    add( "field_type", &field_types::load );
     add( "emit", &emit::load_emit );
     add( "activity_type", &activity_type::load );
     add( "vitamin", &vitamin::load_vitamin );
@@ -335,6 +335,7 @@ void DynamicDataLoader::initialize()
     add( "npc_class", &npc_class::load_npc_class );
     add( "talk_topic", &load_talk_topic );
     add( "epilogue", &epilogue::load_epilogue );
+    add( "behavior", &behavior::load_behavior );
 
     add( "MONSTER_FACTION", &monfactions::load_monster_faction );
 
@@ -445,6 +446,7 @@ void DynamicDataLoader::unload_data()
     json_flag::reset();
     requirement_data::reset();
     vitamin::reset();
+    field_types::reset();
     emit::reset();
     activity_type::reset();
     fault::reset();
@@ -461,6 +463,7 @@ void DynamicDataLoader::unload_data()
     mutations_category.clear();
     mutation_category_trait::reset();
     mutation_branch::reset_all();
+    spell_type::reset_all();
     reset_bionics();
     clear_tutorial_messages();
     reset_furn_ter();
@@ -487,6 +490,7 @@ void DynamicDataLoader::unload_data()
     overmap_specials::reset();
     ammunition_type::reset();
     unload_talk_topics();
+    behavior::reset();
     start_location::reset();
     scenario::reset();
     gates::reset();
@@ -518,6 +522,7 @@ void DynamicDataLoader::finalize_loaded_data( loading_ui &ui )
     using named_entry = std::pair<std::string, std::function<void()>>;
     const std::vector<named_entry> entries = {{
             { _( "Body parts" ), &body_part_struct::finalize_all },
+            { _( "Field types" ), &field_types::finalize_all },
             {
                 _( "Items" ), []()
                 {
@@ -549,12 +554,14 @@ void DynamicDataLoader::finalize_loaded_data( loading_ui &ui )
             },
             { _( "Monster groups" ), &MonsterGroupManager::FinalizeMonsterGroups },
             { _( "Monster factions" ), &monfactions::finalize },
+            { _( "Factions" ), &npc_factions::finalize },
             { _( "Crafting recipes" ), &recipe_dictionary::finalize },
             { _( "Recipe groups" ), &recipe_group::check },
             { _( "Martial arts" ), &finialize_martial_arts },
             { _( "Constructions" ), &finalize_constructions },
             { _( "NPC classes" ), &npc_class::finalize_all },
             { _( "Missions" ), &mission_type::finalize },
+            { _( "Behaviors" ), &behavior::finalize },
             { _( "Harvest lists" ), &harvest_list::finalize_all },
             { _( "Anatomies" ), &anatomy::finalize_all },
 #if defined(TILES)
@@ -591,6 +598,7 @@ void DynamicDataLoader::check_consistency( loading_ui &ui )
                 }
             },
             { _( "Vitamins" ), &vitamin::check_consistency },
+            { _( "Field types" ), &field_types::check_consistency },
             { _( "Emissions" ), &emit::check_consistency },
             { _( "Activities" ), &activity_type::check_consistency },
             {
@@ -627,6 +635,7 @@ void DynamicDataLoader::check_consistency( loading_ui &ui )
             { _( "Bionics" ), &check_bionics },
             { _( "Gates" ), &gates::check },
             { _( "NPC classes" ), &npc_class::check_consistency },
+            { _( "Behaviors" ), &behavior::check_consistency },
             { _( "Mission types" ), &mission_type::check_consistency },
             {
                 _( "Item actions" ), []()

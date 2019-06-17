@@ -1,6 +1,6 @@
 #include "color.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <algorithm> // for std::count
 #include <iterator>
 #include <map>
@@ -133,8 +133,7 @@ color_id color_manager::color_to_id( const nc_color &color ) const
 nc_color color_manager::get( const color_id id ) const
 {
     if( id >= num_colors ) {
-        debugmsg( "Invalid color index: %d. Color array size: %ld", id,
-                  static_cast<unsigned long>( color_array.size() ) );
+        debugmsg( "Invalid color index: %d. Color array size: %zd", id, color_array.size() );
         return nc_color();
     }
 
@@ -675,7 +674,7 @@ void color_manager::clear()
     }
 }
 
-void draw_header( const catacurses::window &w )
+static void draw_header( const catacurses::window &w )
 {
     int tmpx = 0;
     tmpx += shortcut_print( w, 0, tmpx, c_white, c_light_green,

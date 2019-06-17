@@ -1,12 +1,13 @@
 #include "clzones.h"
 
-#include <stddef.h>
-#include <limits.h>
+#include <cstddef>
+#include <climits>
 #include <iosfwd>
 #include <iterator>
 #include <list>
 #include <tuple>
 
+#include "avatar.h"
 #include "cata_utility.h"
 #include "debug.h"
 #include "game.h"

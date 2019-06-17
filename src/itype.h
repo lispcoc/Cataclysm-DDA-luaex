@@ -32,7 +32,7 @@ enum art_effect_active : int;
 enum art_charge : int;
 enum art_charge_req : int;
 enum art_effect_passive : int;
-typedef std::string itype_id;
+using itype_id = std::string;
 
 enum field_id : int;
 
@@ -89,18 +89,21 @@ class gunmod_location
 };
 
 struct islot_tool {
-    ammotype ammo_id = ammotype::NULL_ID();
+    std::set<ammotype> ammo_id = {};
 
     cata::optional<itype_id> revert_to;
     std::string revert_msg;
 
     std::string subtype;
 
-    long max_charges = 0;
-    long def_charges = 0;
-    std::vector<long> rand_charges;
-    unsigned char charges_per_use = 0;
-    unsigned char turns_per_charge = 0;
+    int max_charges = 0;
+    int def_charges = 0;
+    int charge_factor = 1;
+    int charges_per_use = 0;
+    int turns_per_charge = 0;
+    int power_draw = 0;
+
+    std::vector<int> rand_charges;
 };
 
 struct islot_comestible {
@@ -111,7 +114,7 @@ struct islot_comestible {
     std::string tool = "null";
 
     /** Defaults # of charges (drugs, loaf of bread? etc) */
-    long def_charges = 1;
+    int def_charges = 1;
 
     /** effect on character thirst (may be negative) */
     int quench = 0;
@@ -308,7 +311,7 @@ struct islot_book {
      */
     int intel = 0;
     /**
-     * How long, in 10-turns (aka minutes), it takes to read.
+     * How long in minutes it takes to read.
      * "To read" means getting 1 skill point, not all of them.
      */
     int time = 0;
@@ -343,7 +346,7 @@ struct islot_book {
             return hidden;
         }
     };
-    typedef std::set<recipe_with_description_t> recipe_list_t;
+    using recipe_list_t = std::set<recipe_with_description_t>;
     recipe_list_t recipes;
 };
 
@@ -352,7 +355,7 @@ struct islot_mod {
     std::set<ammotype> acceptable_ammo;
 
     /** If set modifies parent ammo to this type */
-    ammotype ammo_modifier = ammotype::NULL_ID();
+    std::set<ammotype> ammo_modifier = {};
 
     /** If non-empty replaces the compatible magazines for the parent item */
     std::map< ammotype, std::set<itype_id> > magazine_adaptor;
@@ -396,10 +399,6 @@ struct islot_engine {
     public:
         /** for combustion engines the displacement (cc) */
         int displacement = 0;
-
-    private:
-        /** What faults (if any) can occur */
-        std::set<fault_id> faults;
 };
 
 struct islot_wheel {
@@ -437,7 +436,7 @@ struct islot_gun : common_ranged_data {
     /**
      * What type of ammo this gun uses.
      */
-    ammotype ammo = ammotype::NULL_ID();
+    std::set<ammotype> ammo = {};
     /**
      * Gun durability, affects gun being damaged during shooting.
      */
@@ -469,6 +468,14 @@ struct islot_gun : common_ranged_data {
      * If this uses UPS charges, how many (per shoot), 0 for no UPS charges at all.
      */
     int ups_charges = 0;
+    /**
+     * One in X chance for gun to require major cleanup after firing blackpowder shot.
+     */
+    int blackpowder_tolerance = 8;
+    /**
+     * Minimum ammo recoil for gun to be able to fire more than once per attack.
+     */
+    int min_cycle_recoil = 0;
     /**
      * Length of gun barrel, if positive allows sawing down of the barrel
      */
@@ -581,7 +588,7 @@ struct islot_gunmod : common_ranged_data {
 
 struct islot_magazine {
     /** What type of ammo this magazine can be loaded with */
-    ammotype type = ammotype::NULL_ID();
+    std::set<ammotype> type = {};
 
     /** Capacity of magazine (in equivalent units to ammo charges) */
     int capacity = 0;
@@ -612,7 +619,7 @@ struct islot_ammo : common_ranged_data {
     /**
      * Ammo type, basically the "form" of the ammo that fits into the gun/tool.
      */
-    std::set<ammotype> type;
+    ammotype type;
     /**
      * Type id of casings, if any.
      */
@@ -631,7 +638,7 @@ struct islot_ammo : common_ranged_data {
     /**
      * Default charges.
      */
-    long def_charges = 1;
+    int def_charges = 1;
 
     /**
      * TODO: document me.
@@ -837,6 +844,8 @@ struct itype {
 
         /** Weight of item ( or each stack member ) */
         units::mass weight = 0_gram;
+        /** Weight difference with the part it replaces for mods */
+        units::mass integral_weight = units::from_gram( -1 );
 
         /**
          * Space occupied by items of this type
@@ -883,6 +892,9 @@ struct itype {
 
         /** What items can be used to repair this item? @see Item_factory::finalize */
         std::set<itype_id> repair;
+
+        /** What faults (if any) can occur */
+        std::set<fault_id> faults;
 
         /** Magazine types (if any) for each ammo type that can be used to reload this item */
         std::map< ammotype, std::set<itype_id> > magazines;
@@ -949,9 +961,14 @@ struct itype {
 
         int charges_to_use() const {
             if( tool ) {
-                return tool->charges_per_use;
+                return static_cast<int>( tool->charges_per_use );
             }
             return 1;
+        }
+
+        // for tools that sub another tool, but use a different ratio of charges
+        int charge_factor() const {
+            return tool ? tool->charge_factor : 1;
         }
 
         int maximum_charges() const {
@@ -965,16 +982,16 @@ struct itype {
          * Number of (charges of) this type of item that fit into the given volume.
          * May return 0 if not even one charge fits into the volume.
          */
-        long charges_per_volume( const units::volume &vol ) const;
+        int charges_per_volume( const units::volume &vol ) const;
 
         bool has_use() const;
         bool can_use( const std::string &iuse_name ) const;
         const use_function *get_use( const std::string &iuse_name ) const;
 
         // Here "invoke" means "actively use". "Tick" means "active item working"
-        long invoke( player &p, item &it, const tripoint &pos ) const; // Picks first method or returns 0
-        long invoke( player &p, item &it, const tripoint &pos, const std::string &iuse_name ) const;
-        long tick( player &p, item &it, const tripoint &pos ) const;
+        int invoke( player &p, item &it, const tripoint &pos ) const; // Picks first method or returns 0
+        int invoke( player &p, item &it, const tripoint &pos, const std::string &iuse_name ) const;
+        int tick( player &p, item &it, const tripoint &pos ) const;
 
         virtual ~itype() = default;
 };
