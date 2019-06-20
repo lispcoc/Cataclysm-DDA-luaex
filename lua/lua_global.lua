@@ -29,5 +29,5 @@ global_functions = {
     { name = "get_terrain_type", rval = "const ter_t &", args = {"int"}, },
     { name = "handle_liquid", cpp_name = "liquid_handler::handle_liquid", rval = "bool", args = {"item &"}, optional_args = {"item *", "int", "const tripoint *", "const vehicle *", "const int", "const monster *"}, },
     { name = "get_monster_types", cpp_name = "MonsterGenerator::generator().get_all_mtypes", rval = "const std::vector<mtype>", args = {}, },
-    { name = "choose_adjacent", rval = "cata::optional<tripoint>", args = {"const std::string &"}, optional_args = {"const bool"}},
+    { name = "choose_adjacent", cpp_name = "lua_global_choose_adjacent", rval = "std::tuple<int, int, int>", args = {"const std::string &"}, optional_args = {"const bool"}},
 }
