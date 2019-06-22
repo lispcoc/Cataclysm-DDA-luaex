@@ -3244,20 +3244,20 @@ bool vehicle::do_environmental_effects()
     return needed;
 }
 
-void vehicle::spew_smoke( double joules, int part, int density )
+void vehicle::spew_smoke( double joules, int part, int intensity )
 {
     if( rng( 1, 10000 ) > joules ) {
         return;
     }
     point p = parts[part].mount;
-    density = std::max( joules / 10000, static_cast<double>( density ) );
+    intensity = std::max( joules / 10000, static_cast<double>( intensity ) );
     // Move back from engine/muffler until we find an open space
     while( relative_parts.find( p ) != relative_parts.end() ) {
         p.x += ( velocity < 0 ? 1 : -1 );
     }
     point q = coord_translate( p );
     const tripoint dest = global_pos3() + tripoint( q.x, q.y, 0 );
-    g->m.adjust_field_strength( dest, fd_smoke, density );
+    g->m.adjust_field_intensity( dest, fd_smoke, intensity );
 }
 
 /**
@@ -3319,7 +3319,7 @@ void vehicle::noise_and_smoke( int load, time_duration time )
                 }
 
                 if( ( exhaust_part == -1 ) && engine_on ) {
-                    spew_smoke( j, p, bad_filter ? MAX_FIELD_DENSITY : 1 );
+                    spew_smoke( j, p, bad_filter ? MAX_FIELD_INTENSITY : 1 );
                 } else {
                     mufflesmoke += j;
                 }
@@ -3331,7 +3331,7 @@ void vehicle::noise_and_smoke( int load, time_duration time )
     }
     if( ( exhaust_part != -1 ) && engine_on &&
         has_engine_type_not( fuel_type_muscle, true ) ) { // No engine, no smoke
-        spew_smoke( mufflesmoke, exhaust_part, bad_filter ? MAX_FIELD_DENSITY : 1 );
+        spew_smoke( mufflesmoke, exhaust_part, bad_filter ? MAX_FIELD_INTENSITY : 1 );
     }
     // Cap engine noise to avoid deafening.
     noise = std::min( noise, 100.0 );
@@ -4445,8 +4445,8 @@ cata::optional<vehicle_stack::iterator> vehicle::add_item( int part, const item 
 
 bool vehicle::remove_item( int part, item *it )
 {
-    const colony<item> &veh_items = parts[part].items;
-    const colony<item>::const_iterator iter = veh_items.get_iterator_from_pointer( it );
+    const cata::colony<item> &veh_items = parts[part].items;
+    const cata::colony<item>::const_iterator iter = veh_items.get_iterator_from_pointer( it );
     if( iter == veh_items.end() ) {
         return false;
     }
@@ -4456,7 +4456,7 @@ bool vehicle::remove_item( int part, item *it )
 
 vehicle_stack::iterator vehicle::remove_item( int part, vehicle_stack::const_iterator it )
 {
-    colony<item> &veh_items = parts[part].items;
+    cata::colony<item> &veh_items = parts[part].items;
 
     if( active_items.has( it, parts[part].mount ) ) {
         active_items.remove( it, parts[part].mount );
@@ -5514,8 +5514,8 @@ void vehicle::update_time( const time_point &update_to )
         if( pt.is_unavailable() || ( !pt.enabled ) ) {
             continue;
         }
-        int density = abs( pt.info().epower ) * 2;
-        g->m.adjust_field_strength( global_part_pos3( pt ), fd_hot_air3, density );
+        int intensity = abs( pt.info().epower ) * 2;
+        g->m.adjust_field_intensity( global_part_pos3( pt ), fd_hot_air3, intensity );
         discharge_battery( pt.info().epower );
     }
     // coolers emitting cold air
@@ -5524,8 +5524,8 @@ void vehicle::update_time( const time_point &update_to )
         if( pt.is_unavailable() || ( !pt.enabled ) ) {
             continue;
         }
-        int density = abs( pt.info().epower ) * 5;
-        g->m.adjust_field_strength( global_part_pos3( pt ), fd_cold_air3, density );
+        int intensity = abs( pt.info().epower ) * 5;
+        g->m.adjust_field_intensity( global_part_pos3( pt ), fd_cold_air3, intensity );
         discharge_battery( pt.info().epower );
     }
     // Get one weather data set per vehicle, they don't differ much across vehicle area
