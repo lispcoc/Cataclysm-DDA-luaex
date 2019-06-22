@@ -242,11 +242,9 @@ const ter_t &get_terrain_type( int id )
     return ter_id( id ).obj();
 }
 
-std::tuple<int, int, int> lua_global_choose_adjacent( const std::string & msg,
-                                                      const bool allow_vertical )
+cata::optional<tripoint> lua_global_choose_adjacent( const std::string & msg, const bool allow_vertical )
 {
-    auto ret = choose_adjacent( msg, allow_vertical );
-    return std::tuple<int, int, int>( ret->x, ret->y, ret->z );
+    return choose_adjacent( msg, allow_vertical );
 }
 
 //

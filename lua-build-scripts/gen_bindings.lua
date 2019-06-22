@@ -161,6 +161,9 @@ function gen_wrappar_functions(cls_cpp_name, cls_lua_name, t, indent)
                     end
                     func_str = func_str .. table.concat(TableConcat(args_str_t_2, opt_args_str_t), ', ')
                     func_str = func_str .. ');\n'
+                    if data.rval == 'void' then
+                        func_str = func_str  .. indent .. indent .. 'return;\n'
+                    end
                     func_str = func_str .. indent .. '}\n'
                 end
             end
