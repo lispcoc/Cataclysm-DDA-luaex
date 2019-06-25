@@ -275,6 +275,17 @@ std::string get_omt_id( const overmap &om, const tripoint &p );
 const ter_t &get_terrain_type( int id );
 cata::optional<tripoint> lua_global_choose_adjacent( const std::string & msg, const bool allow_vertical = false );
 
+template<class T>
+T* const_off( const T* ptr )
+{
+    return const_cast<T*>( ptr );
+}
+template<class T>
+T& const_off( const T& ref )
+{
+    return const_cast<T&>( ref );
+}
+
 namespace kaguya
 {
 template <typename T>

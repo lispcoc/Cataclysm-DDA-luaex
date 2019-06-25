@@ -29,6 +29,10 @@ global_functions = {
     { name = "get_terrain_type", rval = "const ter_t &", args = {"int"}, },
     { name = "handle_liquid", cpp_name = "liquid_handler::handle_liquid", rval = "bool", args = {"item &"}, optional_args = {"item *", "int", "const tripoint *", "const vehicle *", "const int", "const monster *"}, },
     { name = "get_monster_types", cpp_name = "MonsterGenerator::generator().get_all_mtypes", rval = "const std::vector<mtype>", args = {}, },
-    { name = "choose_adjacent", cpp_name = "lua_global_choose_adjacent", rval = "cata::optional<tripoint>", args = {"const std::string &"}, optional_args = {"const bool"}},
-    { name = "sfx_play_variant_sound", cpp_name = "sfx::play_variant_sound", rval = "void", args = {"const std::string &", "const std::string &", "int"}},
+    { name = "choose_adjacent", cpp_name = "lua_global_choose_adjacent", rval = "cata::optional<tripoint>", args = {"const std::string &"}, optional_args = {"const bool"}, },
+    { name = "sfx_get_heard_volume", cpp_name = "sfx::get_heard_volume", rval = "int", args = {"const tripoint &"}, },
+    { name = "sfx_play_variant_sound", cpp_name = "sfx::play_variant_sound", rval = "void", args = {"const std::string &", "const std::string &", "int"}, },
+    { name = "sfx_play_activity_sound", cpp_name = "sfx::play_activity_sound", rval = "void", args = {"const std::string &", "const std::string &", "int"}, },
+    { name = "sfx_play_ambient_variant_sound", cpp_name = "sfx::play_ambient_variant_sound", rval = "void", args = {"const std::string &", "const std::string &", "int", "int", "int"}, optional_args = {"float"}, },
+     
 }

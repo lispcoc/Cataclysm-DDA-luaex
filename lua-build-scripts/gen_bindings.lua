@@ -47,7 +47,7 @@ function gen_attributes_wrappar(cls_cpp_name, t, indent)
         elseif is_ref then
             str = str .. indent .. type_def .. '* __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return &self->' .. name .. '; }\n'
         elseif is_ptr then
-            str = str .. indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return self->' .. name .. '; }\n'
+            str = str .. indent .. type_def .. ' __get_' .. name .. '(const ' .. cls_cpp_name .. '* self) { return const_off(self->' .. name .. '); }\n'
         end
         if data.writable then
             if data.static then
