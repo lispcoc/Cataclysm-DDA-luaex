@@ -54,6 +54,8 @@
 #include "vpart_position.h"
 #include "vpart_reference.h" // IWYU pragma: keep
 
+#include "_catalua.h"
+
 struct pathfinding_settings;
 
 // Limit the number of iterations for next upgrade_time calculations.
@@ -1968,6 +1970,13 @@ void monster::die( Creature *nkiller )
     g->set_critter_died();
     dead = true;
     set_killer( nkiller );
+    try {
+        get_luastate()["mod_callback"]( "on_monster_died",
+                                        this,
+                                        nkiller );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
+    }
     if( !death_drops ) {
         return;
     }

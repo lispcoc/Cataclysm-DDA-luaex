@@ -47,6 +47,8 @@
 #include "stomach.h"
 #include "ui.h"
 
+#include "_catalua.h"
+
 const efftype_id effect_alarm_clock( "alarm_clock" );
 const efftype_id effect_bandaged( "bandaged" );
 const efftype_id effect_beartrap( "beartrap" );
@@ -1512,6 +1514,13 @@ void Character::die( Creature *nkiller )
     }
     if( has_effect( effect_beartrap ) ) {
         inv.add_item( item( "beartrap", 0 ) );
+    }
+    try {
+        get_luastate()["mod_callback"]( "on_player_died",
+                                        this,
+                                        nkiller );
+    } catch( const std::exception &err ) {
+        debugmsg( _( "Lua error: %1$s" ), err.what() );
     }
     mission::on_creature_death( *this );
 }
