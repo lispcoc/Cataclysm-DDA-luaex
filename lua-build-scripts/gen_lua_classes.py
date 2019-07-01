@@ -124,9 +124,10 @@ class CppFunction:
         self.const = False
         self.static = False
         self.virtual = False
+        self.parent = None
 
     @classmethod
-    def load_from_xml(cls, xml_memberdef):
+    def load_from_xml(cls, xml_memberdef, parent = None):
         if xml_memberdef.attrib['prot'] == 'public':
             if xml_memberdef.attrib['kind'] == 'function':
                 argsstring = xml_memberdef.find('argsstring').text
@@ -149,6 +150,8 @@ class CppFunction:
                     new_func.static = True
                 if xml_memberdef.attrib['virt'] == 'pure-virtual':
                     new_func.virtual = True
+                if parent:
+                    new_func.parent = parent
                 return new_func
         return None
 
@@ -167,12 +170,12 @@ class CppFunction:
         string += '"' + self.strRVal() + '", '
         string += 'args = { '
         for a in self.args:
-            string += '"' + CppType(a).definition + '", '
+            string += '"' + self.strArgWithNamespace(a, self.parent) + '", '
         string += '}, '
         if len(self.optional_args):
             string += 'optional_args = { '
             for a in self.optional_args:
-                string += '"' + CppType(a).definition + '", '
+                string += '"' + self.strArgWithNamespace(a, self.parent) + '", '
             string += '}, '
         if self.const:
             string += 'const = true, '
@@ -201,7 +204,20 @@ class CppFunction:
         r = re.sub(r'static ', '', r)
         r = re.sub(r'constexpr ', '', r)
         r = re.sub(r'virtual ', '', r)
-        return r
+        return self.strArgWithNamespace(r, self.parent)
+
+    def strArgWithNamespace(self, arg, parent):
+        t = CppType(arg)
+        cls = None
+        for typedef in typedefs.keys():
+            if typedef == (parent + '::' + t.name):
+                return t.definition.replace(t.name, typedef)
+        for cls2 in all_cpp_classes:
+            if cls2.cpp_name == parent:
+                cls = cls2
+        if cls and cls.base:
+            return self.strArgWithNamespace(arg, cls.base)
+        return t.definition
 
     def isValid(self):
         if self.isInvalidOp():
@@ -426,7 +442,7 @@ class CppClass:
                 new_class.abstract = True
         # function
         for member in xml_compounddef.iter('memberdef'):
-            new_func = CppFunction.load_from_xml(member)
+            new_func = CppFunction.load_from_xml(member, new_class.cpp_name)
             if new_func:
                 new_class.functions.append(new_func)
 
@@ -604,7 +620,7 @@ for xml_file in xml_files:
     for member in members:
         definition = member.find('definition')
         tmp = etree.tostring(definition, method="text")
-        tmp2 = re.findall(r'^using\s+(\w+)\s+=\s+(.+)', tmp)
+        tmp2 = re.findall(r'^using\s+(.+)\s+=\s+(.+)', tmp)
         if len(tmp2):
             typedefs[tmp2[0][0]] = tmp2[0][1]
 
