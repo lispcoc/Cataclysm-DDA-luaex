@@ -20,6 +20,7 @@
 #include "clzones.h"
 #include "damage.h"
 #include "game_constants.h"
+#include "faction.h"
 #include "item.h"
 #include "item_group.h"
 #include "item_stack.h"
@@ -27,9 +28,12 @@
 #include "string_id.h"
 #include "tileray.h"
 #include "units.h"
-#include "enums.h"
 #include "item_location.h"
 #include "type_id.h"
+#include "optional.h"
+#include "point.h"
+
+class monster;
 
 class Creature;
 class nc_color;
@@ -712,9 +716,37 @@ class vehicle
                              int hl = -1, bool detail = false ) const;
 
         // Vehicle parts descriptions - descriptions for all the parts on a single tile
-        void print_vparts_descs( const catacurses::window &win, int max_y, int width, int &p,
+        void print_vparts_descs( const catacurses::window &win, int max_y, int width, int p,
                                  int &start_at, int &start_limit ) const;
-
+        // owner functions
+        void set_old_owner( const faction *temp_owner ) {
+            theft_time = calendar::turn;
+            old_owner = temp_owner;
+        }
+        void remove_old_owner() {
+            theft_time = cata::nullopt;
+            old_owner = nullptr;
+        }
+        void set_owner( faction *new_owner ) {
+            owner = new_owner;
+            name = string_format( _( "%s (%s)" ), base_name.empty() ? name : base_name, new_owner->name );
+        }
+        void remove_owner() {
+            owner = nullptr;
+        }
+        const faction *get_owner() const {
+            return owner;
+        }
+        const faction *get_old_owner() const {
+            return old_owner;
+        }
+        bool has_owner() const {
+            return owner;
+        }
+        bool handle_potential_theft( player &p, bool check_only = false, bool prompt = true );
+        // project a tileray forward to predict obstacles
+        std::set<point> immediate_path( int rotate = 0 );
+        void do_autodrive();
         /**
          *  Operate vehicle controls
          *  @param pos location of physical controls to operate (ignored during remote operation)
@@ -1108,8 +1140,8 @@ class vehicle
         // Get maximum velocity for the current movement mode
         int safe_velocity( bool fueled = true ) const;
 
-        // Generate smoke from a part, either at front or back of vehicle depending on velocity.
-        void spew_smoke( double joules, int part, int intensity = 1 );
+        // Generate field from a part, either at front or back of vehicle depending on velocity.
+        void spew_field( double joules, int part, field_type_id type, int intensity = 1 );
 
         // Loop through engines and generate noise and smoke for each one
         void noise_and_smoke( int load, time_duration time = 1_turns );
@@ -1398,8 +1430,7 @@ class vehicle
         //scoop operation,pickups, battery drain, etc.
         void operate_scoop();
         void operate_reaper();
-        void operate_plow();
-        void operate_rockwheel();
+        void transform_terrain();
         void add_toggle_to_opts( std::vector<uilist_entry> &options,
                                  std::vector<std::function<void()>> &actions, const std::string &name, char key,
                                  const std::string &flag );
@@ -1492,7 +1523,14 @@ class vehicle
         bool refresh_zones();
 
         // config values
+        std::string base_name; // vehicle name without ownership
         std::string name;   // vehicle name
+        // The faction that owns this vehicle.
+        const faction *owner = nullptr;
+        // The faction that previously owned this vehicle
+        const faction *old_owner = nullptr;
+        // the time point when it was succesfully stolen
+        cata::optional<time_point> theft_time;
         /**
          * Type of the vehicle as it was spawned. This will never change, but it can be an invalid
          * type (e.g. if the definition of the prototype has been removed from json or if it has been
@@ -1505,7 +1543,9 @@ class vehicle
         relative_parts;    // parts_at_relative(dp) is used a lot (to put it mildly)
         std::set<label> labels;            // stores labels
         std::unordered_multimap<point, zone_data> loot_zones;
-        // relative loot zone positions
+        bool is_autodriving = false;
+        std::vector<tripoint> omt_path; // route for overmap-scale auto-driving
+        tripoint autodrive_local_target = tripoint_zero; // currrent node the autopilot is aiming for
         std::vector<int> alternators;      // List of alternator indices
         std::vector<int> engines;          // List of engine indices
         std::vector<int> reactors;         // List of reactor indices
@@ -1514,8 +1554,7 @@ class vehicle
         std::vector<int> water_wheels;     // List of water wheel indices
         std::vector<int> sails;            // List of sail indices
         std::vector<int> funnels;          // List of funnel indices
-        std::vector<int> heaters;          // List of heater parts
-        std::vector<int> coolers;          // List of cooler parts
+        std::vector<int> emitters;         // List of emitter parts
         std::vector<int> loose_parts;      // List of UNMOUNT_ON_MOVE parts
         std::vector<int> wheelcache;       // List of wheels
         std::vector<int> rail_wheelcache;  // List of rail wheels

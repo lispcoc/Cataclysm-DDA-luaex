@@ -517,6 +517,7 @@ class CppEnum:
         self.name = None
         self.cpp_name = None
         self.parent = None
+        self.namespace = None
         self.values = []
         self.refid = None
         self.as_class = False
@@ -540,6 +541,7 @@ class CppEnum:
                     valname = enumvalue.find('name').text
                     new_enum.values.append(valname)
                 new_enum.parent = CppEnum.getParentClass(xml_memberdef)
+                new_enum.namespace = CppEnum.getNamespace(xml_memberdef)
                 if new_enum.parent and re.search(r'^anonymous_namespace', new_enum.parent):
                     return None
                 new_enum.refid = xml_memberdef.attrib['id']
@@ -559,6 +561,15 @@ class CppEnum:
         return None
 
     @classmethod
+    def getNamespace(cls, element):
+        parent = element.getparent().getparent()
+        if len(parent):
+            if 'kind' in parent.attrib.keys():
+                if parent.attrib['kind'] == 'namespace':
+                    return parent.find('compoundname').text
+        return None
+
+    @classmethod
     def searchCodeLine(cls, tree, refid):
         lines = tree.xpath("//codeline [@refid='" + refid + "']")
         if len(lines):
@@ -567,17 +578,21 @@ class CppEnum:
 
     def str(self, indent=''):
         s = self.name + ' = {' + '\n'
+        tmp_cpp_name = self.cpp_name
         if self.parent:
-            s += '    cpp_name = "' + self.parent + '::' + self.cpp_name + '",\n'
-        else:
-            s += '    cpp_name = "' + self.cpp_name + '",\n'
+            tmp_cpp_name = self.parent + '::' + tmp_cpp_name
+        if self.namespace:
+            tmp_cpp_name = self.namespace + '::' + tmp_cpp_name
+        s += '    cpp_name = "' + tmp_cpp_name + '",\n'
         s += '    values = {' + '\n'
         for v in self.values:
             v2 = v
-            if self.as_class:
-                v2 = self.cpp_name + '::' + v2
+            #if self.as_class:
+            v2 = self.cpp_name + '::' + v2
             if self.parent:
                 v2 = self.parent + '::' + v2
+            if self.namespace:
+                v2 = self.namespace + '::' + v2
             s += '        {"' + v + '", "' + v2 + '"},\n'
         s += '    },' + '\n'
         s += '},'

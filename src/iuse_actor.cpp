@@ -10,7 +10,6 @@
 #include <iterator>
 #include <list>
 #include <memory>
-#include <type_traits>
 
 #include "action.h"
 #include "activity_handlers.h"
@@ -21,7 +20,6 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_utility.h"
-#include "coordinate_conversions.h"
 #include "crafting.h"
 #include "creature.h"
 #include "debug.h"
@@ -63,7 +61,6 @@
 #include "vehicle.h"
 #include "vitamin.h"
 #include "weather.h"
-#include "creature.h"
 #include "enums.h"
 #include "int_id.h"
 #include "inventory.h"
@@ -73,6 +70,8 @@
 #include "player_activity.h"
 #include "recipe.h"
 #include "rng.h"
+#include "flat_set.h"
+#include "point.h"
 
 class npc;
 
@@ -422,10 +421,13 @@ void explosion_iuse::load( JsonObject &obj )
     obj.read( "flashbang_player_immune", flashbang_player_immune );
     obj.read( "fields_radius", fields_radius );
     if( obj.has_member( "fields_type" ) || fields_radius > 0 ) {
-        fields_type = field_from_ident( obj.get_string( "fields_type" ) );
+        fields_type = field_type_id( obj.get_string( "fields_type" ) );
     }
     obj.read( "fields_min_intensity", fields_min_intensity );
     obj.read( "fields_max_intensity", fields_max_intensity );
+    if( fields_max_intensity == 0 ) {
+        fields_max_intensity = fields_type.obj().get_max_intensity();
+    }
     obj.read( "emp_blast_radius", emp_blast_radius );
     obj.read( "scrambler_blast_radius", scrambler_blast_radius );
     obj.read( "sound_volume", sound_volume );
@@ -467,8 +469,8 @@ int explosion_iuse::use( player &p, item &it, bool t, const tripoint &pos ) cons
     if( fields_radius >= 0 && fields_type != fd_null ) {
         std::vector<tripoint> gas_sources = points_for_gas_cloud( pos, fields_radius );
         for( auto &gas_source : gas_sources ) {
-            const int intens = rng( fields_min_intensity, fields_max_intensity );
-            g->m.add_field( gas_source, fields_type, intens, 1_turns );
+            const int field_intensity = rng( fields_min_intensity, fields_max_intensity );
+            g->m.add_field( gas_source, fields_type, field_intensity, 1_turns );
         }
     }
     if( scrambler_blast_radius >= 0 ) {
@@ -689,7 +691,7 @@ int consume_drug_iuse::use( player &p, item &it, bool, const tripoint & ) const
         p.mod_stat( stat_adjustment.first, stat_adjustment.second );
     }
     for( const auto &field : fields_produced ) {
-        const field_id fid = field_from_ident( field.first );
+        const field_type_id fid = field_type_id( field.first );
         for( int i = 0; i < 3; i++ ) {
             g->m.add_field( {p.posx() + static_cast<int>( rng( -2, 2 ) ), p.posy() + static_cast<int>( rng( -2, 2 ) ), p.posz()},
                             fid,
@@ -1082,7 +1084,8 @@ void reveal_map_actor::load( JsonObject &obj )
 void reveal_map_actor::reveal_targets( const tripoint &center, const std::string &target,
                                        int reveal_distance ) const
 {
-    const auto places = overmap_buffer.find_all( center, target, radius, false, true );
+    const auto places = overmap_buffer.find_all( center, target, radius, false,
+                        ot_match_type::contains );
     for( auto &place : places ) {
         overmap_buffer.reveal( place, reveal_distance );
     }
@@ -2303,7 +2306,7 @@ int cast_spell_actor::use( player &p, item &itm, bool, const tripoint & ) const
     spell casting = spell( spell_id( item_spell ) );
     int charges = itm.type->charges_to_use();
 
-    player_activity cast_spell( activity_id( "ACT_SPELLCASTING" ), casting.casting_time() );
+    player_activity cast_spell( activity_id( "ACT_SPELLCASTING" ), casting.casting_time( p ) );
     // [0] this is used as a spell level override for items casting spells
     cast_spell.values.emplace_back( spell_level );
     if( no_fail ) {
@@ -4196,7 +4199,8 @@ int deploy_tent_actor::use( player &p, item &it, bool, const tripoint & ) const
             return 0;
         }
         if( g->m.impassable( dest ) || !g->m.has_flag( "FLAT", dest ) ) {
-            add_msg( m_info, _( "The %s in that direction is not passable." ), g->m.name( dest ) );
+            add_msg( m_info, _( "The %s in that direction isn't suitable for placing the %s." ),
+                     g->m.name( dest ), it.tname() );
             return 0;
         }
         if( g->m.has_furn( dest ) ) {
@@ -4242,4 +4246,32 @@ bool deploy_tent_actor::check_intact( const tripoint &center ) const
         }
     }
     return true;
+}
+
+void weigh_self_actor::info( const item &, std::vector<iteminfo> &dump ) const
+{
+    dump.emplace_back( "DESCRIPTION",
+                       _( "Use this item to weigh yourself.  Includes everything you are wearing." ) );
+}
+
+int weigh_self_actor::use( player &p, item &, bool, const tripoint & ) const
+{
+    // this is a weight, either in kgs or in lbs.
+    double weight = convert_weight( p.get_weight() );
+    if( weight > convert_weight( max_weight ) ) {
+        popup( _( "ERROR: Max weight of %.0f %s exceeded" ), convert_weight( max_weight ), weight_units() );
+    } else {
+        popup( string_format( "%.0f %s", weight, weight_units() ) );
+    }
+    return 0;
+}
+
+void weigh_self_actor::load( JsonObject &jo )
+{
+    assign( jo, "max_weight", max_weight );
+}
+
+iuse_actor *weigh_self_actor::clone() const
+{
+    return new weigh_self_actor( *this );
 }

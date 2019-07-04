@@ -195,7 +195,6 @@
 #include "drawing_primitives.h"
 #include "loading_ui.h"
 #include "pimpl.h"
-#include "vpart_reference.h"
 #include "editmap.h"
 #include "main_menu.h"
 #include "platform_win.h"

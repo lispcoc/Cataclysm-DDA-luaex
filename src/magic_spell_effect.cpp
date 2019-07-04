@@ -1,7 +1,17 @@
-#include "magic.h"
-
+#include <limits.h>
+#include <math.h>
+#include <stdlib.h>
 #include <set>
+#include <algorithm>
+#include <array>
+#include <functional>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "magic.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "character.h"
@@ -18,6 +28,15 @@
 #include "player.h"
 #include "projectile.h"
 #include "type_id.h"
+#include "bodypart.h"
+#include "damage.h"
+#include "debug.h"
+#include "explosion.h"
+#include "magic_teleporter_list.h"
+#include "point.h"
+#include "ret_val.h"
+#include "rng.h"
+#include "translations.h"
 
 static tripoint random_point( int min_distance, int max_distance, const tripoint &player_pos )
 {
@@ -294,9 +313,9 @@ static void add_effect_to_target( const tripoint &target, const spell &sp )
     }
 }
 
-static void damage_targets( const spell &sp, std::set<tripoint> targets )
+static void damage_targets( const spell &sp, const std::set<tripoint> &targets )
 {
-    for( const tripoint target : targets ) {
+    for( const tripoint &target : targets ) {
         if( !sp.is_valid_target( target ) ) {
             continue;
         }
@@ -319,7 +338,7 @@ static void damage_targets( const spell &sp, std::set<tripoint> targets )
         }
         if( sp.damage() > 0 ) {
             cr->deal_projectile_attack( &g->u, atk, true );
-        } else {
+        } else if( sp.damage() < 0 ) {
             sp.heal( target );
             add_msg( m_good, _( "%s wounds are closing up!" ), cr->disp_name( true ) );
         }
@@ -399,11 +418,7 @@ void spell_effect::recover_energy( spell &sp, const tripoint &target )
     if( energy_source == "MANA" ) {
         p->magic.mod_mana( *p, healing );
     } else if( energy_source == "STAMINA" ) {
-        if( healing > 0 ) {
-            p->stamina = std::min( p->get_stamina_max(), p->stamina + healing );
-        } else {
-            p->stamina = std::max( 0, p->stamina + healing );
-        }
+        p->mod_stat( "stamina", healing );
     } else if( energy_source == "FATIGUE" ) {
         // fatigue is backwards
         p->mod_fatigue( -healing );
@@ -411,7 +426,7 @@ void spell_effect::recover_energy( spell &sp, const tripoint &target )
         if( healing > 0 ) {
             p->power_level = std::min( p->max_power_level, p->power_level + healing );
         } else {
-            p->stamina = std::max( 0, p->stamina + healing );
+            p->mod_stat( "stamina", healing );
         }
     } else if( energy_source == "PAIN" ) {
         // pain is backwards
@@ -446,6 +461,7 @@ static bool add_summoned_mon( const mtype_id &id, const tripoint &pos, const tim
     if( !permanent ) {
         spawned_mon.set_summon_time( time );
     }
+    spawned_mon.no_extra_death_drops = true;
     return g->add_zombie( spawned_mon );
 }
 
@@ -470,4 +486,10 @@ void spell_effect::spawn_summoned_monster( spell &sp, const tripoint &source,
         // whether or not we succeed in spawning a monster, we don't want to try this tripoint again
         area.erase( iter );
     }
+}
+
+void spell_effect::translocate( spell &sp, const tripoint &source, const tripoint &target,
+                                teleporter_list &tp_list )
+{
+    tp_list.translocate( spell_effect_area( sp, source, target, spell_effect_blast, true ) );
 }

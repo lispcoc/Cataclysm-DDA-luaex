@@ -49,10 +49,8 @@
 #include "player.h"
 #include "int_id.h"
 #include "string_id.h"
-#include "veh_type.h"
-#include "vehicle.h"
-#include "vpart_position.h"
-#include "vpart_reference.h" // IWYU pragma: keep
+#include "flat_set.h"
+#include "weather.h"
 
 #include "_catalua.h"
 
@@ -343,7 +341,7 @@ void monster::try_upgrade( bool pin_time )
             upgrade_time += current_day;
         } else {
             // offset by starting season
-            upgrade_time += to_days<int>( calendar::time_of_cataclysm - calendar::start );
+            upgrade_time += calendar::start;
         }
     }
 
@@ -1487,9 +1485,15 @@ bool monster::move_effects( bool )
         return false;
     }
     if( has_effect( effect_downed ) ) {
-        remove_effect( effect_downed );
-        if( u_see_me ) {
-            add_msg( _( "The %s climbs to its feet!" ), name() );
+        if( rng( 0, 40 ) > type->melee_dice * type->melee_sides * 1.5 ) {
+            if( u_see_me ) {
+                add_msg( _( "The %s struggles to stand." ), name() );
+            }
+        } else {
+            if( u_see_me ) {
+                add_msg( _( "The %s climbs to its feet!" ), name() );
+            }
+            remove_effect( effect_downed );
         }
         return false;
     }
@@ -1574,11 +1578,11 @@ bool monster::move_effects( bool )
     return true;
 }
 
-void monster::add_effect( const efftype_id &eff_id, const time_duration dur, body_part bp,
+void monster::add_effect( const efftype_id &eff_id, const time_duration dur, body_part/*bp*/,
                           bool permanent, int intensity, bool force, bool deferred )
 {
-    bp = num_bp; // Effects are not applied to specific monster body part
-    Creature::add_effect( eff_id, dur, bp, permanent, intensity, force, deferred );
+    // Effects are not applied to specific monster body part
+    Creature::add_effect( eff_id, dur, num_bp, permanent, intensity, force, deferred );
 }
 
 std::string monster::get_effect_status() const
@@ -2320,14 +2324,14 @@ bool monster::is_hallucination() const
     return hallucination;
 }
 
-field_id monster::bloodType() const
+field_type_id monster::bloodType() const
 {
     if( is_hallucination() ) {
         return fd_null;
     }
     return type->bloodType();
 }
-field_id monster::gibType() const
+field_type_id monster::gibType() const
 {
     if( is_hallucination() ) {
         return fd_null;

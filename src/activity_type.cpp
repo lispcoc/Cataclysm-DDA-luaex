@@ -13,6 +13,7 @@
 #include "translations.h"
 #include "player.h"
 #include "player_activity.h"
+#include "string_formatter.h"
 
 #include "_catalua.h"
 
