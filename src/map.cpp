@@ -1267,7 +1267,9 @@ void map::furn_set( const tripoint &p, const furn_id &new_furniture )
         add_msg( _( "The %s you were grabbing is destroyed!" ), old_t.name() );
         g->u.grab( OBJECT_NONE );
     }
-
+    if( new_t.has_flag( "EMITTER" ) ) {
+        field_furn_locs.push_back( p );
+    }
     if( old_t.transparent != new_t.transparent ) {
         set_transparency_cache_dirty( p.z );
     }
@@ -6262,8 +6264,8 @@ void map::reachable_flood_steps( std::vector<tripoint> &reachable_pts, const tri
             t_grid[ item.ndx ] = item.dist;
             if( item.dist + 1 < range ) {
                 gen_neighbors( item, grid_dim, neighbor_elems );
-                for( int i = 0; i < 8; ++i ) {
-                    pq.push( neighbor_elems[i] );
+                for( pq_item neighbor_elem : neighbor_elems) {
+                    pq.push( neighbor_elem );
                 }
             }
         }
@@ -6437,6 +6439,7 @@ void map::load( const int wx, const int wy, const int wz, const bool update_vehi
     for( auto &traps : traplocs ) {
         traps.clear();
     }
+    field_furn_locs.clear();
     submaps_with_active_items.clear();
     set_abs_sub( wx, wy, wz );
     for( int gridx = 0; gridx < my_MAPSIZE; gridx++ ) {
@@ -6450,6 +6453,15 @@ void map::shift_traps( const tripoint &shift )
 {
     // Offset needs to have sign opposite to shift direction
     const tripoint offset( -shift.x * SEEX, -shift.y * SEEY, -shift.z );
+    for( auto iter = field_furn_locs.begin(); iter != field_furn_locs.end(); ){
+        tripoint &pos = *iter;
+        pos += offset;
+        if( inbounds( pos ) ) {
+            ++iter;
+        } else {
+            iter = field_furn_locs.erase( iter );
+        }
+    }
     for( auto &traps : traplocs ) {
         for( auto iter = traps.begin(); iter != traps.end(); ) {
             tripoint &pos = *iter;
@@ -7182,6 +7194,9 @@ void map::actualize( const int gridx, const int gridy, const int gridz )
             const tripoint pnt( gridx * SEEX + x, gridy * SEEY + y, gridz );
             const point p( x, y );
             const auto &furn = this->furn( pnt ).obj();
+            if( furn.has_flag( "EMITTER" ) ){
+                field_furn_locs.push_back( pnt );
+            }
             // plants contain a seed item which must not be removed under any circumstances
             if( !furn.has_flag( "DONT_REMOVE_ROTTEN" ) ) {
                 remove_rotten_items( tmpsub->itm[x][y], pnt );
@@ -7193,7 +7208,7 @@ void map::actualize( const int gridx, const int gridy, const int gridz )
             }
             const ter_t &ter = tmpsub->get_ter( p ).obj();
             if( ter.trap != tr_null && ter.trap != tr_ledge ) {
-                traplocs[trap_here].push_back( pnt );
+                traplocs[ter.trap].push_back( pnt );
             }
 
             if( do_funnels ) {
@@ -7493,6 +7508,11 @@ void map::clear_traps()
     }
 }
 
+const std::vector<tripoint> &map::get_furn_field_locations() const
+{
+    return field_furn_locs;
+}
+
 const std::vector<tripoint> &map::trap_locations( const trap_id &type ) const
 {
     return traplocs[type];
@@ -7501,27 +7521,21 @@ const std::vector<tripoint> &map::trap_locations( const trap_id &type ) const
 bool map::inbounds( const tripoint &p ) const
 {
     static constexpr tripoint map_boundary_min( 0, 0, -OVERMAP_DEPTH );
-    static constexpr tripoint map_boundary_max( MAPSIZE_Y, MAPSIZE_X, OVERMAP_HEIGHT );
-    static constexpr tripoint map_clearance_min( tripoint_zero );
-    static constexpr tripoint map_clearance_max( 1, 1, 0 );
+    static constexpr tripoint map_boundary_max( MAPSIZE_Y, MAPSIZE_X, OVERMAP_HEIGHT + 1 );
 
     static constexpr box map_boundaries( map_boundary_min, map_boundary_max );
-    static constexpr box map_clearance( map_clearance_min, map_clearance_max );
 
-    return generic_inbounds( p, map_boundaries, map_clearance );
+    return map_boundaries.contains_half_open( p );
 }
 
 bool tinymap::inbounds( const tripoint &p ) const
 {
     constexpr tripoint map_boundary_min( 0, 0, -OVERMAP_DEPTH );
-    constexpr tripoint map_boundary_max( SEEY * 2, SEEX * 2, OVERMAP_HEIGHT );
-    constexpr tripoint map_clearance_min( tripoint_zero );
-    constexpr tripoint map_clearance_max( 1, 1, 0 );
+    constexpr tripoint map_boundary_max( SEEY * 2, SEEX * 2, OVERMAP_HEIGHT + 1 );
 
     constexpr box map_boundaries( map_boundary_min, map_boundary_max );
-    constexpr box map_clearance( map_clearance_min, map_clearance_max );
 
-    return generic_inbounds( p, map_boundaries, map_clearance );
+    return map_boundaries.contains_half_open( p );
 }
 
 // set up a map just long enough scribble on it
@@ -8372,19 +8386,21 @@ std::list<item_location> map::get_active_items_in_radius( const tripoint &center
     const point maxg( std::min( maxp.x / SEEX, my_MAPSIZE - 1 ),
                       std::min( maxp.y / SEEY, my_MAPSIZE - 1 ) );
 
-    for( int gx = ming.x; gx <= maxg.x; ++gx ) {
-        for( int gy = ming.y; gy <= maxg.y; ++gy ) {
-            const point sm_offset( gx * SEEX, gy * SEEY );
+    for( const tripoint &submap_loc : submaps_with_active_items ) {
+        if( submap_loc.x < ming.x || submap_loc.y < ming.y ||
+            submap_loc.x > maxg.x || submap_loc.y > maxg.y ) {
+            continue;
+        }
+        const point sm_offset( submap_loc.x * SEEX, submap_loc.y * SEEY );
 
-            for( const auto &elem : get_submap_at_grid( { gx, gy, center.z } )->active_items.get() ) {
-                const tripoint pos( sm_offset + elem.location, center.z );
+        for( const auto &elem : get_submap_at_grid( submap_loc )->active_items.get() ) {
+            const tripoint pos( sm_offset + elem.location, submap_loc.z );
 
-                if( rl_dist( pos, center ) > radius ) {
-                    continue;
-                }
-
-                result.emplace_back( map_cursor( pos ), elem.item_ref.get() );
+            if( rl_dist( pos, center ) > radius ) {
+                continue;
             }
+
+            result.emplace_back( map_cursor( pos ), elem.item_ref.get() );
         }
     }
 

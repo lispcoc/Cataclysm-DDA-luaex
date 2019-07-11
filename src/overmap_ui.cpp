@@ -568,6 +568,15 @@ void draw( const catacurses::window &w, const catacurses::window &wbar, const tr
             npc *npc_to_add = npc_to_get.get();
             followers.push_back( npc_to_add );
         }
+        for( auto &elem : overmap_buffer.get_npcs_near_player( 75 ) ) {
+            if( !elem ) {
+                continue;
+            }
+            npc *npc_to_add = elem.get();
+            if( npc_to_add->mission == NPC_MISSION_TRAVELLING ) {
+                followers.push_back( npc_to_add );
+            }
+        }
         for( auto &elem : g->u.omt_path ) {
             tripoint tri_to_add = tripoint( elem.x, elem.y, g->u.posz() );
             player_path_route.push_back( tri_to_add );
@@ -1403,6 +1412,9 @@ static tripoint display( const tripoint &orig, const draw_data_t &data = draw_da
             const tripoint player_omt_pos = g->u.global_omt_location();
             if( !g->u.omt_path.empty() && g->u.omt_path.front() == curs ) {
                 if( query_yn( _( "Travel to this point?" ) ) ) {
+                    // renew the path incase of a leftover dangling path point
+                    g->u.omt_path = overmap_buffer.get_npc_path( player_omt_pos, curs, g->u.in_vehicle &&
+                                    g->u.controlling_vehicle );
                     if( g->u.in_vehicle && g->u.controlling_vehicle ) {
                         vehicle *player_veh = veh_pointer_or_null( g->m.veh_at( g->u.pos() ) );
                         player_veh->omt_path = g->u.omt_path;

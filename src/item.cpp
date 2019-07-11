@@ -161,6 +161,29 @@ item &null_item_reference()
     return result;
 }
 
+namespace item_internal
+{
+bool goes_bad_temp_cache = false;
+bool goes_bad_temp_cache_set = false;
+inline bool goes_bad_cache_fetch()
+{
+    return goes_bad_temp_cache;
+}
+inline void goes_bad_cache_set( bool v )
+{
+    goes_bad_temp_cache = v;
+    goes_bad_temp_cache_set = true;
+}
+inline void goes_bad_cache_unset()
+{
+    goes_bad_temp_cache_set = goes_bad_temp_cache = false;
+}
+inline bool goes_bad_cache_is_set()
+{
+    return goes_bad_temp_cache_set;
+}
+} // namespace item_internal
+
 const int item::INFINITE_CHARGES = INT_MAX;
 
 item::item() : bday( calendar::start )
@@ -2247,6 +2270,10 @@ std::string item::info( std::vector<iteminfo> &info, const iteminfo_query *parts
             } else if( idescription != item_vars.end() ) {
                 info.push_back( iteminfo( "DESCRIPTION", idescription->second ) );
             } else {
+                if( has_flag( "MAGIC_FOCUS" ) ) {
+                    info.push_back( iteminfo( "DESCRIPTION",
+                                              _( "This item is a <info>magical focus</info>.  You can cast spells with it in your hand." ) ) );
+                }
                 if( is_craft() ) {
                     const std::string desc = _( "This is an in progress %s.  It is %d percent complete." );
                     const int percent_progress = item_counter / 100000;
@@ -4001,6 +4028,9 @@ std::set<matec_id> item::get_techniques() const
 
 bool item::goes_bad() const
 {
+    if( item_internal::goes_bad_cache_is_set() ) {
+        return item_internal::goes_bad_cache_fetch();
+    }
     if( has_flag( "PROCESSING" ) ) {
         return false;
     }
@@ -5053,7 +5083,7 @@ bool item::is_med_container() const
 
 bool item::is_corpse() const
 {
-    return typeId() == "corpse" && corpse != nullptr;
+    return corpse != nullptr && typeId() == "corpse";
 }
 
 const mtype *item::get_mtype() const
@@ -5870,14 +5900,14 @@ int item::ammo_consume( int qty, const tripoint &pos )
         auto res = mag->ammo_consume( qty, pos );
         if( res && ammo_remaining() == 0 ) {
             if( mag->has_flag( "MAG_DESTROY" ) ) {
-                contents.erase( std::remove_if( contents.begin(), contents.end(), [&mag]( const item & e ) {
+                contents.remove_if( [&mag]( const item & e ) {
                     return mag == &e;
-                } ) );
+                } );
             } else if( mag->has_flag( "MAG_EJECT" ) ) {
                 g->m.add_item( pos, *mag );
-                contents.erase( std::remove_if( contents.begin(), contents.end(), [&mag]( const item & e ) {
+                contents.remove_if( [&mag]( const item & e ) {
                     return mag == &e;
-                } ) );
+                } );
             }
         }
         return res;
@@ -7439,6 +7469,7 @@ void item::process_temperature_rot( float insulation, const tripoint &pos,
     }
 
     time_point time;
+    item_internal::goes_bad_cache_set( goes_bad() );
     if( goes_bad() ) {
         time = std::min( { last_rot_check, last_temp_check } );
     } else {
@@ -7475,8 +7506,8 @@ void item::process_temperature_rot( float insulation, const tripoint &pos,
             //Use weather if above ground, use map temp if below
             double env_temperature = 0;
             if( pos.z >= 0 ) {
-                w_point weather = wgen.get_weather( pos, time, seed );
-                env_temperature = weather.temperature + enviroment_mod + local_mod;
+                double weather_temperature = wgen.get_weather_temperature( pos, time, seed );
+                env_temperature = weather_temperature + enviroment_mod + local_mod;
             } else {
                 env_temperature = AVERAGE_ANNUAL_TEMPERATURE + enviroment_mod + local_mod;
             }
@@ -7517,6 +7548,7 @@ void item::process_temperature_rot( float insulation, const tripoint &pos,
 
                 if( has_rotten_away() || ( is_corpse() && rot > 10_days ) ) {
                     // No need to track item that will be gone
+                    item_internal::goes_bad_cache_unset();
                     return;
                 }
             }
@@ -7528,6 +7560,7 @@ void item::process_temperature_rot( float insulation, const tripoint &pos,
     if( now - time > smallest_interval ) {
         calc_temp( temp, insulation, now );
         calc_rot( now, temp );
+        item_internal::goes_bad_cache_unset();
         return;
     }
 
@@ -7535,6 +7568,7 @@ void item::process_temperature_rot( float insulation, const tripoint &pos,
     if( specific_energy < 0 ) {
         set_item_temperature( temp_to_kelvin( temp ) );
     }
+    item_internal::goes_bad_cache_unset();
 }
 
 void item::calc_temp( const int temp, const float insulation, const time_point &time )

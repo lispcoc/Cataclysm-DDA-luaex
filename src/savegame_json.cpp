@@ -859,8 +859,14 @@ void avatar::store( JsonOut &json ) const
     json.member( "style_selected", style_selected );
     json.member( "keep_hands_free", keep_hands_free );
 
-    json.member( "move_mode", move_mode );
+    json.member( "move_mode", player_movemode_str[ move_mode ] );
     json.member( "magic", magic );
+
+    // stats through kills
+    json.member( "str_upgrade", abs( str_upgrade ) );
+    json.member( "dex_upgrade", abs( dex_upgrade ) );
+    json.member( "int_upgrade", abs( int_upgrade ) );
+    json.member( "per_upgrade", abs( per_upgrade ) );
 
     // crafting etc
     json.member( "activity", activity );
@@ -955,9 +961,30 @@ void avatar::load( JsonObject &data )
     data.read( "style_selected", style_selected );
     data.read( "keep_hands_free", keep_hands_free );
 
+    // stats through kills
+    data.read( "str_upgrade", str_upgrade );
+    data.read( "dex_upgrade", dex_upgrade );
+    data.read( "int_upgrade", int_upgrade );
+    data.read( "per_upgrade", per_upgrade );
+
+    // this is so we don't need to call get_option in a draw function
+    if( !get_option<bool>( "STATS_THROUGH_KILLS" ) )         {
+        str_upgrade = -str_upgrade;
+        dex_upgrade = -dex_upgrade;
+        int_upgrade = -int_upgrade;
+        per_upgrade = -per_upgrade;
+    }
+
     data.read( "stamina", stamina );
     data.read( "magic", magic );
-    data.read( "move_mode", move_mode );
+    std::string tmove_mode;
+    data.read( "move_mode", tmove_mode );
+    for( int i = 0; i < PMM_COUNT; ++i ) {
+        if( tmove_mode == player_movemode_str[i] ) {
+            move_mode = static_cast<player_movemode>( i );
+            break;
+        }
+    }
 
     set_highest_cat_level();
     drench_mut_calc();
@@ -1699,7 +1726,7 @@ void monster::load( JsonObject &data )
     if( data.read( "wandz", wander_pos.z ) ) {
         wander_pos.z = position.z;
     }
-
+    data.read( "tied_item", tied_item );
     data.read( "hp", hp );
 
     // sp_timeout indicates an old save, prior to the special_attacks refactor
@@ -1832,6 +1859,7 @@ void monster::store( JsonOut &json ) const
     json.member( "morale", morale );
     json.member( "hallucination", hallucination );
     json.member( "stairscount", staircount );
+    json.member( "tied_item", tied_item );
     // Store the relative position of the goal so it loads correctly after a map shift.
     json.member( "destination", goal - pos() );
     json.member( "ammo", ammo );
@@ -1879,86 +1907,10 @@ void time_duration::serialize( JsonOut &jsout ) const
     jsout.write( turns_ );
 }
 
-time_duration time_duration::read_from_json_string( JsonIn &jsin )
-{
-    static const std::vector<std::pair<std::string, time_duration>> units = { {
-            { "turns", 1_turns },
-            { "turn", 1_turns },
-            { "t", 1_turns },
-            { "seconds", 1_seconds },
-            { "second", 1_seconds },
-            { "s", 1_seconds },
-            { "minutes", 1_minutes },
-            { "minute", 1_minutes },
-            { "m", 1_minutes },
-            { "hours", 1_hours },
-            { "hour", 1_hours },
-            { "h", 1_hours },
-            { "days", 1_days },
-            { "day", 1_days },
-            { "d", 1_days },
-            // TODO: maybe add seasons?
-            // TODO: maybe add years? Those two things depend on season length!
-        }
-    };
-    const size_t pos = jsin.tell();
-    size_t i = 0;
-    const auto error = [&]( const char *const msg ) {
-        jsin.seek( pos + i );
-        jsin.error( msg );
-    };
-
-    const std::string s = jsin.get_string();
-    // returns whether we are at the end of the string
-    const auto skip_spaces = [&]() {
-        while( i < s.size() && s[i] == ' ' ) {
-            ++i;
-        }
-        return i >= s.size();
-    };
-    const auto get_unit = [&]() {
-        if( skip_spaces() ) {
-            error( "invalid time duration string: missing unit" );
-        }
-        for( const auto &pair : units ) {
-            const std::string &unit = pair.first;
-            if( s.size() >= unit.size() + i && s.compare( i, unit.size(), unit ) == 0 ) {
-                i += unit.size();
-                return pair.second;
-            }
-        }
-        error( "invalid time duration string: unknown unit" );
-        throw; // above always throws
-    };
-
-    if( skip_spaces() ) {
-        error( "invalid time duration string: empty string" );
-    }
-    time_duration result = 0_turns;
-    do {
-        int sign_value = +1;
-        if( s[i] == '-' ) {
-            sign_value = -1;
-            ++i;
-        } else if( s[i] == '+' ) {
-            ++i;
-        }
-        if( i >= s.size() || !isdigit( s[i] ) ) {
-            error( "invalid time duration string: number expected" );
-        }
-        int value = 0;
-        for( ; i < s.size() && isdigit( s[i] ); ++i ) {
-            value = value * 10 + ( s[i] - '0' );
-        }
-        result += sign_value * value * get_unit();
-    } while( !skip_spaces() );
-    return result;
-}
-
 void time_duration::deserialize( JsonIn &jsin )
 {
     if( jsin.test_string() ) {
-        *this = read_from_json_string( jsin );
+        *this = read_from_json_string<time_duration>( jsin, time_duration::units );
     } else {
         turns_ = jsin.get_int();
     }
@@ -1980,7 +1932,7 @@ void item::io( Archive &archive )
     };
 
     const auto load_curammo = [this]( const std::string & id ) {
-        curammo = item::find_type( id );
+        curammo = item::find_type( item_controller->migrate_id( id ) );
     };
     const auto load_corpse = [this]( const std::string & id ) {
         if( id == "null" ) {
@@ -2453,7 +2405,6 @@ void vehicle::deserialize( JsonIn &jsin )
     face.init( fdir );
     move.init( mdir );
     data.read( "name", name );
-    data.read( "base_name", base_name );
     std::string temp_id;
     std::string temp_old_id;
     data.read( "owner", temp_id );
@@ -2577,7 +2528,6 @@ void vehicle::serialize( JsonOut &json ) const
     json.member( "skidding", skidding );
     json.member( "of_turn_carry", of_turn_carry );
     json.member( "name", name );
-    json.member( "base_name", base_name );
     json.member( "owner", owner ? owner->id.str() : "" );
     json.member( "old_owner", old_owner ? old_owner->id.str() : "" );
     json.member( "theft_time", theft_time );
@@ -3244,6 +3194,7 @@ void submap::store( JsonOut &jsout ) const
     std::string last_id;
     int num_same = 1;
     for( int j = 0; j < SEEY; j++ ) {
+        // NOLINTNEXTLINE(modernize-loop-convert)
         for( int i = 0; i < SEEX; i++ ) {
             const std::string this_id = ter[i][j].obj().id.str();
             if( !last_id.empty() ) {
@@ -3485,6 +3436,7 @@ void submap::load( JsonIn &jsin, const std::string &member_name, bool rubpow_upd
             int remaining = 0;
             int_id<ter_t> iid;
             for( int j = 0; j < SEEY; j++ ) {
+                // NOLINTNEXTLINE(modernize-loop-convert)
                 for( int i = 0; i < SEEX; i++ ) {
                     if( !remaining ) {
                         if( jsin.test_string() ) {

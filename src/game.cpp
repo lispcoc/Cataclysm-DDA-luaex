@@ -1545,6 +1545,14 @@ bool game::do_turn()
     if( calendar::once_every( 3_minutes ) ) {
         overmap_npc_move();
     }
+    if( calendar::once_every( 10_seconds ) ) {
+        for( const tripoint elem : m.get_furn_field_locations() ) {
+            const auto &furn = m.furn( elem ).obj();
+            for( const emit_id &e : furn.emissions ) {
+                g->m.emit_field( elem, e );
+            }
+        }
+    }
     update_stair_monsters();
     u.process_turn();
     if( u.moves < 0 && get_option<bool>( "FORCE_REDRAW" ) ) {
@@ -1745,6 +1753,17 @@ void game::set_critter_died()
     critter_died = true;
 }
 
+static int maptile_field_intensity( maptile &mt, field_type_id fld )
+{
+    auto field_ptr = mt.find_field( fld );
+
+    return ( field_ptr == nullptr ? 0 : field_ptr->get_field_intensity() );
+}
+static bool maptile_trap_eq( maptile &mt, const trap_id &id )
+{
+    return mt.get_trap() == id;
+}
+
 int get_heat_radiation( const tripoint &location, bool direct )
 {
     // Direct heat from fire sources
@@ -1755,10 +1774,12 @@ int get_heat_radiation( const tripoint &location, bool direct )
     for( const tripoint &dest : g->m.points_in_radius( location, 6 ) ) {
         int heat_intensity = 0;
 
-        int ffire = g->m.get_field_intensity( dest, fd_fire );
+        maptile mt = g->m.maptile_at( dest );
+
+        int ffire = maptile_field_intensity( mt, fd_fire );
         if( ffire > 0 ) {
             heat_intensity = ffire;
-        } else if( g->m.tr_at( dest ).loadid == tr_lava ) {
+        } else if( maptile_trap_eq( mt, tr_lava ) ) {
             heat_intensity = 3;
         }
         if( heat_intensity == 0 ) {
@@ -1790,29 +1811,29 @@ int get_convection_temperature( const tripoint &location )
 {
     // Heat from hot air (fields)
     int temp_mod = 0;
-    const trap &trap_at_pos = g->m.tr_at( location );
+    maptile mt = g->m.maptile_at( location );
     // directly on fire/lava tiles
-    int tile_intensity = g->m.get_field_intensity( location, fd_fire );
-    if( tile_intensity > 0 || trap_at_pos.loadid == tr_lava ) {
+    int tile_intensity = maptile_field_intensity( mt, fd_fire );
+    if( tile_intensity > 0 || maptile_trap_eq( mt, tr_lava ) ) {
         temp_mod += 300;
     }
     // hot air of a fire/lava
-    auto tile_intensity_mod = []( const tripoint & loc, field_type_id fld, int case_1, int case_2,
+    auto tile_intensity_mod = []( maptile & mt, field_type_id fld, int case_1, int case_2,
     int case_3 ) {
-        int field_intensity = g->m.get_field_intensity( loc, fld );
+        int field_intensity = maptile_field_intensity( mt, fld );
         int cases[3] = { case_1, case_2, case_3 };
         return ( field_intensity > 0 && field_intensity < 4 ) ? cases[ field_intensity - 1 ] : 0;
     };
 
     // TODO: Jsonize
-    temp_mod += tile_intensity_mod( location, fd_hot_air1,  2,   6,  10 );
-    temp_mod += tile_intensity_mod( location, fd_hot_air2,  6,  16,  20 );
-    temp_mod += tile_intensity_mod( location, fd_hot_air3, 16,  40,  70 );
-    temp_mod += tile_intensity_mod( location, fd_hot_air4, 70, 100, 160 );
-    temp_mod -= tile_intensity_mod( location, fd_cold_air1,  2,   6,  10 );
-    temp_mod -= tile_intensity_mod( location, fd_cold_air2,  6,  16,  20 );
-    temp_mod -= tile_intensity_mod( location, fd_cold_air3, 16,  40,  70 );
-    temp_mod -= tile_intensity_mod( location, fd_cold_air4, 70, 100, 160 );
+    temp_mod += tile_intensity_mod( mt, fd_hot_air1,  2,   6,  10 );
+    temp_mod += tile_intensity_mod( mt, fd_hot_air2,  6,  16,  20 );
+    temp_mod += tile_intensity_mod( mt, fd_hot_air3, 16,  40,  70 );
+    temp_mod += tile_intensity_mod( mt, fd_hot_air4, 70, 100, 160 );
+    temp_mod -= tile_intensity_mod( mt, fd_cold_air1,  2,   6,  10 );
+    temp_mod -= tile_intensity_mod( mt, fd_cold_air2,  6,  16,  20 );
+    temp_mod -= tile_intensity_mod( mt, fd_cold_air3, 16,  40,  70 );
+    temp_mod -= tile_intensity_mod( mt, fd_cold_air4, 70, 100, 160 );
 
     return temp_mod;
 }
@@ -1851,6 +1872,16 @@ int game::kill_count( const species_id &spec )
 void game::increase_kill_count( const mtype_id &id )
 {
     kills[id]++;
+}
+
+int game::kill_xp() const
+{
+    int ret = 0;
+    for( const std::pair<mtype_id, int> &pair : kills ) {
+        ret += ( pair.first->difficulty + pair.first->difficulty_base ) * pair.second;
+    }
+    ret += npc_kills.size() * 10;
+    return ret;
 }
 
 void game::record_npc_kill( const npc &p )
@@ -3022,6 +3053,11 @@ void game::disp_kills()
         buffer << _( "You haven't killed any monsters yet!" );
     } else {
         buffer << string_format( _( "KILL COUNT: %d" ), totalkills );
+        if( get_option<bool>( "STATS_THROUGH_KILLS" ) ) {
+            buffer << "    ";
+            buffer << string_format( _( "Experience: %d (%d points available)" ), kill_xp(),
+                                     u.free_upgrade_points() );
+        }
     }
     display_table( w, buffer.str(), 3, data );
 
@@ -3746,8 +3782,7 @@ Creature *game::is_hostile_within( int distance )
     return nullptr;
 }
 
-//get the fishable critters around and return these
-std::vector<monster *> game::get_fishable( int distance, const tripoint &fish_pos )
+std::unordered_set<tripoint> game::get_fishable_locations( int distance, const tripoint &fish_pos )
 {
     // We're going to get the contiguous fishable terrain starting at
     // the provided fishing location (e.g. where a line was cast or a fish
@@ -3777,7 +3812,7 @@ std::vector<monster *> game::get_fishable( int distance, const tripoint &fish_po
             }
 
             // This point is out of bounds, so bail.
-            if( !generic_inbounds( current_point, fishing_boundaries ) ) {
+            if( !fishing_boundaries.contains_inclusive( current_point ) ) {
                 continue;
             }
 
@@ -3801,13 +3836,19 @@ std::vector<monster *> game::get_fishable( int distance, const tripoint &fish_po
     std::unordered_set<tripoint> fishable_points;
     get_fishable_terrain( fish_pos, fishable_points );
 
+    return fishable_points;
+}
+
+std::vector<monster *> game::get_fishable_monsters( std::unordered_set<tripoint>
+        &fishable_locations )
+{
     std::vector<monster *> unique_fish;
     for( monster &critter : all_monsters() ) {
         // If it is fishable...
         if( critter.has_flag( MF_FISHABLE ) ) {
             const tripoint critter_pos = critter.pos();
             // ...and it is in a fishable location.
-            if( fishable_points.find( critter_pos ) != fishable_points.end() ) {
+            if( fishable_locations.find( critter_pos ) != fishable_locations.end() ) {
                 unique_fish.push_back( &critter );
             }
         }
@@ -4312,13 +4353,11 @@ void game::monmove()
 void game::overmap_npc_move()
 {
     std::vector<npc *> travelling_npcs;
-    // for now just processing NPC followers on travelling missions
-    for( auto &elem : get_follower_list() ) {
-        std::shared_ptr<npc> npc_to_get = overmap_buffer.find_npc( elem );
-        if( !npc_to_get ) {
+    for( auto &elem : overmap_buffer.get_npcs_near_player( 75 ) ) {
+        if( !elem ) {
             continue;
         }
-        npc *npc_to_add = npc_to_get.get();
+        npc *npc_to_add = elem.get();
         if( ( !npc_to_add->is_active() || rl_dist( u.pos(), npc_to_add->pos() ) > SEEX * 2 ) &&
             npc_to_add->mission == NPC_MISSION_TRAVELLING ) {
             travelling_npcs.push_back( npc_to_add );
@@ -4326,22 +4365,14 @@ void game::overmap_npc_move()
     }
     for( auto &elem : travelling_npcs ) {
         if( elem->has_omt_destination() ) {
-            tripoint sm_tri;
-            tripoint next_point;
-            std::vector<tripoint> path = overmap_buffer.get_npc_path( elem->global_omt_location(), elem->goal );
-            elem->omt_path = path;
-            if( path.size() > 1 ) {
-                next_point = path[std::max<size_t>( 0, path.size() - 2 )];
-                sm_tri = omt_to_sm_copy( next_point );
-            } else if( path.size() == 1 ) {
-                next_point = path[0];
-                sm_tri = omt_to_sm_copy( next_point );
-                elem->omt_path.clear();
-            } else if( path.empty() ) {
-                add_msg( m_info, _( "%s can't reach their destination" ),
-                         elem->disp_name() );
+            if( elem->omt_path.empty() ) {
+                elem->omt_path = overmap_buffer.get_npc_path( elem->global_omt_location(), elem->goal );
+            } else {
+                if( elem->omt_path.back() == elem->global_omt_location() ) {
+                    elem->omt_path.pop_back();
+                }
+                elem->travel_overmap( omt_to_sm_copy( elem->omt_path.back() ) );
             }
-            elem->travel_overmap( sm_tri );
             reload_npcs();
         }
     }
@@ -7938,24 +7969,49 @@ static void butcher_submenu( const std::vector<map_stack::iterator> &corpses, in
     if( !enough_light ) {
         popup( _( "Some types of butchery are not possible when it is dark." ) );
     }
+
+    const int factor = g->u.max_quality( quality_id( "BUTCHER" ) );
+    const std::string msgFactor = factor > INT_MIN
+                                  ? string_format( _( "Your best tool has %d butchering." ), factor )
+                                  :  _( "You have no butchering tool." );
+
+    const int factorD = g->u.max_quality( quality_id( "CUT_FINE" ) );
+    const std::string msgFactorD = factorD > INT_MIN
+                                   ? string_format( _( "Your best tool has %d fine cutting." ), factorD )
+                                   :  _( "You have no fine cutting tool." );
+
     uilist smenu;
     smenu.desc_enabled = true;
     smenu.text = _( "Choose type of butchery:" );
 
     smenu.addentry_col( BUTCHER, enough_light, 'B', _( "Quick butchery" ), cut_time( BUTCHER ),
-                        _( "This technique is used when you are in a hurry, but still want to harvest something from the corpse.  Yields are lower as you don't try to be precise, but it's useful if you don't want to set up a workshop.  Prevents zombies from raising." ) );
+                        string_format( "%s  %s",
+                                       _( "This technique is used when you are in a hurry, but still want to harvest something from the corpse.  Yields are lower as you don't try to be precise, but it's useful if you don't want to set up a workshop.  Prevents zombies from raising." ),
+                                       msgFactor ) );
     smenu.addentry_col( BUTCHER_FULL, enough_light, 'b', _( "Full butchery" ), cut_time( BUTCHER_FULL ),
-                        _( "This technique is used to properly butcher a corpse, and requires a rope & a tree or a butchering rack, a flat surface (for ex. a table, a leather tarp, etc.) and good tools.  Yields are plentiful and varied, but it is time consuming." ) );
+                        string_format( "%s  %s",
+                                       _( "This technique is used to properly butcher a corpse, and requires a rope & a tree or a butchering rack, a flat surface (for ex. a table, a leather tarp, etc.) and good tools.  Yields are plentiful and varied, but it is time consuming." ),
+                                       msgFactor ) );
     smenu.addentry_col( F_DRESS, enough_light, 'f', _( "Field dress corpse" ), cut_time( F_DRESS ),
-                        _( "Technique that involves removing internal organs and viscera to protect the corpse from rotting from inside. Yields internal organs. Carcass will be lighter and will stay fresh longer.  Can be combined with other methods for better effects." ) );
+                        string_format( "%s  %s",
+                                       _( "Technique that involves removing internal organs and viscera to protect the corpse from rotting from inside. Yields internal organs. Carcass will be lighter and will stay fresh longer.  Can be combined with other methods for better effects." ),
+                                       msgFactor ) );
     smenu.addentry_col( SKIN, enough_light, 's', _( "Skin corpse" ), cut_time( SKIN ),
-                        _( "Skinning a corpse is an involved and careful process that usually takes some time.  You need skill and an appropriately sharp and precise knife to do a good job.  Some corpses are too small to yield a full-sized hide and will instead produce scraps that can be used in other ways." ) );
+                        string_format( "%s  %s",
+                                       _( "Skinning a corpse is an involved and careful process that usually takes some time.  You need skill and an appropriately sharp and precise knife to do a good job.  Some corpses are too small to yield a full-sized hide and will instead produce scraps that can be used in other ways." ),
+                                       msgFactor ) );
     smenu.addentry_col( QUARTER, enough_light, 'k', _( "Quarter corpse" ), cut_time( QUARTER ),
-                        _( "By quartering a previously field dressed corpse you will acquire four parts with reduced weight and volume.  It may help in transporting large game.  This action destroys skin, hide, pelt, etc., so don't use it if you want to harvest them later." ) );
+                        string_format( "%s  %s",
+                                       _( "By quartering a previously field dressed corpse you will acquire four parts with reduced weight and volume.  It may help in transporting large game.  This action destroys skin, hide, pelt, etc., so don't use it if you want to harvest them later." ),
+                                       msgFactor ) );
     smenu.addentry_col( DISMEMBER, true, 'm', _( "Dismember corpse" ), cut_time( DISMEMBER ),
-                        _( "If you're aiming to just destroy a body outright, and don't care about harvesting it, dismembering it will hack it apart in a very short amount of time, but yield little to no usable flesh." ) );
+                        string_format( "%s  %s",
+                                       _( "If you're aiming to just destroy a body outright, and don't care about harvesting it, dismembering it will hack it apart in a very short amount of time, but yield little to no usable flesh." ),
+                                       msgFactor ) );
     smenu.addentry_col( DISSECT, enough_light, 'd', _( "Dissect corpse" ), cut_time( DISSECT ),
-                        _( "By careful dissection of the corpse, you will examine it for possible bionic implants, or discrete organs and harvest them if possible.  Requires scalpel-grade cutting tools, ruins corpse, and consumes a lot of time.  Your medical knowledge is most useful here." ) );
+                        string_format( "%s  %s",
+                                       _( "By careful dissection of the corpse, you will examine it for possible bionic implants, or discrete organs and harvest them if possible.  Requires scalpel-grade cutting tools, ruins corpse, and consumes a lot of time.  Your medical knowledge is most useful here." ),
+                                       msgFactorD ) );
     smenu.query();
     switch( smenu.ret ) {
         case BUTCHER:
@@ -9011,9 +9067,9 @@ bool game::walk_move( const tripoint &dest_loc )
             } else if( u.has_bionic( bionic_id( "bio_ankles" ) ) ) {
                 volume = 12;
             }
-            if( u.get_movement_mode() == "run" ) {
+            if( u.movement_mode_is( PMM_RUN ) ) {
                 volume *= 1.5;
-            } else if( u.get_movement_mode() == "crouch" ) {
+            } else if( u.movement_mode_is( PMM_CROUCH ) ) {
                 volume /= 2;
             }
             sounds::sound( dest_loc, volume, sounds::sound_t::movement, _( "footsteps" ), true,
@@ -9696,14 +9752,14 @@ void game::on_move_effects()
         }
     }
     if( u.has_active_bionic( bionic_id( "bio_jointservo" ) ) ) {
-        if( u.get_movement_mode() == "run" ) {
+        if( u.movement_mode_is( PMM_RUN ) ) {
             u.charge_power( -20 );
         } else {
             u.charge_power( -10 );
         }
     }
 
-    if( u.get_movement_mode() == "run" ) {
+    if( u.movement_mode_is( PMM_RUN ) ) {
         if( u.stamina <= 0 ) {
             u.toggle_run_mode();
         }
@@ -10805,9 +10861,6 @@ void game::perhaps_add_random_npc()
         return;
     }
 
-    std::shared_ptr<npc> tmp = std::make_shared<npc>();
-    tmp->normalize();
-    tmp->randomize();
     //tmp->stock_missions();
     // Create the NPC in one of the outermost submaps,
     // hopefully far away to be invisible to the player,
@@ -10834,6 +10887,15 @@ void game::perhaps_add_random_npc()
         default:
             break;
     }
+    tripoint omt_pos = sm_to_omt_copy( tripoint( msx, msy, 0 ) );
+    const auto oter = overmap_buffer.ter( omt_pos );
+    // shouldnt spawn on lakes or rivers.
+    if( is_river_or_lake( oter ) ) {
+        return;
+    }
+    std::shared_ptr<npc> tmp = std::make_shared<npc>();
+    tmp->normalize();
+    tmp->randomize();
     // adds the npc to the correct overmap.
     tmp->spawn_at_sm( msx, msy, 0 );
     overmap_buffer.insert_npc( tmp );
@@ -11681,11 +11743,12 @@ bool game::non_dead_range<Creature>::iterator::valid()
     if( !current ) {
         return false;
     }
-    if( const monster *const ptr = dynamic_cast<monster *>( current.get() ) ) {
-        return !ptr->is_dead();
+    const Creature *const critter = current.get();
+    if( critter->is_monster() ) {
+        return !static_cast<const monster *>( critter )->is_dead();
     }
-    if( const npc *const ptr = dynamic_cast<npc *>( current.get() ) ) {
-        return !ptr->is_dead();
+    if( critter->is_npc() ) {
+        return !static_cast<const npc *>( critter )->is_dead();
     }
     return true; // must be g->u
 }

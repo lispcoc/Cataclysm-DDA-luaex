@@ -12,6 +12,8 @@
 
 // Divided by 100 to prevent overflowing when converted to moves
 const int calendar::INDEFINITELY_LONG( std::numeric_limits<int>::max() / 100 );
+const time_duration calendar::INDEFINITELY_LONG_DURATION(
+    time_duration::from_turns( std::numeric_limits<int>::max() ) );
 bool calendar::is_eternal_season = false;
 int calendar::cur_season_length = 1;
 
@@ -366,8 +368,7 @@ static std::string to_string_clipped( const int num, const clipped_unit type,
 
 std::pair<int, clipped_unit> clipped_time( const time_duration &d )
 {
-    // TODO: change INDEFINITELY_LONG to time_duration
-    if( to_turns<int>( d ) >= calendar::INDEFINITELY_LONG ) {
+    if( d >= calendar::INDEFINITELY_LONG_DURATION ) {
         return { 0, clipped_unit::forever };
     }
 
@@ -410,7 +411,7 @@ std::string to_string_clipped( const time_duration &d,
 
 std::string to_string( const time_duration &d )
 {
-    if( d >= time_duration::from_turns( calendar::INDEFINITELY_LONG ) ) {
+    if( d >= calendar::INDEFINITELY_LONG_DURATION ) {
         return _( "forever" );
     }
 
@@ -624,6 +625,27 @@ bool x_in_y( const time_duration &a, const time_duration &b )
 {
     return ::x_in_y( to_turns<int>( a ), to_turns<int>( b ) );
 }
+
+const std::vector<std::pair<std::string, time_duration>> time_duration::units = { {
+        { "turns", 1_turns },
+        { "turn", 1_turns },
+        { "t", 1_turns },
+        { "seconds", 1_seconds },
+        { "second", 1_seconds },
+        { "s", 1_seconds },
+        { "minutes", 1_minutes },
+        { "minute", 1_minutes },
+        { "m", 1_minutes },
+        { "hours", 1_hours },
+        { "hour", 1_hours },
+        { "h", 1_hours },
+        { "days", 1_days },
+        { "day", 1_days },
+        { "d", 1_days },
+        // TODO: maybe add seasons?
+        // TODO: maybe add years? Those two things depend on season length!
+    }
+};
 
 season_type season_of_year( const time_point &p )
 {

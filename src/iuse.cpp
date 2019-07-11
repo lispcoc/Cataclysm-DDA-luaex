@@ -219,7 +219,6 @@ const efftype_id effect_weak_antibiotic( "weak_antibiotic" );
 const efftype_id effect_weak_antibiotic_visible( "weak_antibiotic_visible" );
 const efftype_id effect_webbed( "webbed" );
 const efftype_id effect_weed_high( "weed_high" );
-const efftype_id effect_winded( "winded" );
 const efftype_id effect_magnesium_supplements( "magnesium" );
 
 static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
@@ -951,7 +950,6 @@ int iuse::oxygen_bottle( player *p, item *it, bool, const tripoint & )
         p->stim += 8;
         p->mod_painkiller( 2 );
     }
-    p->remove_effect( effect_winded );
     p->mod_painkiller( 2 );
     return it->type->charges_to_use();
 }
@@ -1856,7 +1854,8 @@ int iuse::remove_all_mods( player *p, item *, bool, const tripoint & )
 
 static bool good_fishing_spot( tripoint pos )
 {
-    std::vector<monster *> fishables = g->get_fishable( 60, pos );
+    std::unordered_set<tripoint> fishable_locations = g->get_fishable_locations( 60, pos );
+    std::vector<monster *> fishables = g->get_fishable_monsters( fishable_locations );
     // isolated little body of water with no definite fish population
     oter_id &cur_omt = overmap_buffer.ter( ms_to_omt_copy( g->m.getabs( pos ) ) );
     std::string om_id = cur_omt.id().c_str();
@@ -1890,7 +1889,7 @@ int iuse::fishing_rod( player *p, item *it, bool, const tripoint & )
     p->add_msg_if_player( _( "You cast your line and wait to hook something..." ) );
     p->assign_activity( activity_id( "ACT_FISH" ), to_moves<int>( 5_hours ), 0,
                         p->get_item_position( it ), it->tname() );
-    p->activity.placement = pnt;
+    p->activity.coord_set = g->get_fishable_locations( 60, pnt );
 
     return 0;
 }
@@ -1985,8 +1984,10 @@ int iuse::fish_trap( player *p, item *it, bool t, const tripoint &pos )
 
                 return 0;
             }
-            std::vector<monster *> fishables = g->get_fishable( 60,
-                                               pos ); //get the fishables around the trap's spot
+
+            //get the fishables around the trap's spot
+            std::unordered_set<tripoint> fishable_locations = g->get_fishable_locations( 60, pos );
+            std::vector<monster *> fishables = g->get_fishable_monsters( fishable_locations );
             for( int i = 0; i < fishes; i++ ) {
                 p->practice( skill_survival, rng( 3, 10 ) );
                 if( fishables.size() >= 1 ) {
@@ -4804,14 +4805,14 @@ int iuse::hacksaw( player *p, item *it, bool t, const tripoint & )
     int moves;
 
     if( ter == t_chainfence_posts || g->m.furn( pnt ) == f_rack ) {
-        moves = to_turns<int>( 2_minutes );
+        moves = to_moves<int>( 2_minutes );
     } else if( ter == t_window_enhanced || ter == t_window_enhanced_noglass ) {
-        moves = to_turns<int>( 5_minutes );
+        moves = to_moves<int>( 5_minutes );
     } else if( ter == t_chainfence || ter == t_chaingate_c ||
                ter == t_chaingate_l || ter == t_window_bars_alarm || ter == t_window_bars || ter == t_reb_cage ) {
-        moves = to_turns<int>( 10_minutes );
+        moves = to_moves<int>( 10_minutes );
     } else if( ter == t_door_bar_c || ter == t_door_bar_locked || ter == t_bars ) {
-        moves = to_turns<int>( 15_minutes );
+        moves = to_moves<int>( 15_minutes );
     } else {
         add_msg( m_info, _( "You can't cut that." ) );
         return 0;
@@ -5072,6 +5073,7 @@ int iuse::artifact( player *p, item *it, bool, const tripoint & )
                         const tripoint spawnp = random_entry_removed( empty );
                         if( monster *const b = g->summon_mon( bug, spawnp ) ) {
                             b->friendly = -1;
+                            b->add_effect( effect_pet, 1_turns, num_bp, true );
                         }
                     }
                 }
@@ -5478,6 +5480,8 @@ int iuse::unfold_generic( player *p, item *it, bool, const tripoint & )
     } else {
         unfold_msg = _( unfold_msg );
     }
+    faction *yours = g->faction_manager_ptr->get( faction_id( "your_followers" ) );
+    veh->set_owner( yours );
     p->add_msg_if_player( m_neutral, unfold_msg, veh->name );
 
     p->moves -= it->get_var( "moves", to_turns<int>( 5_seconds ) );
@@ -7011,7 +7015,10 @@ static extended_photo_def photo_def_for_camera_point( const tripoint &aim_point,
             }
 
             if( guy ) {
-                if( guy->get_movement_mode() == "crouch" ) {
+                if( guy->is_hallucination() ) {
+                    continue; // do not include hallucinations
+                }
+                if( guy->movement_mode_is( PMM_CROUCH ) ) {
                     pose = _( "sits" );
                 } else {
                     pose = _( "stands" );
@@ -7439,7 +7446,9 @@ int iuse::camera( player *p, item *it, bool, const tripoint & )
                         p->add_msg_if_player( _( "Strange... there's nothing in the center of picture?" ) );
                     }
                 } else if( guy ) {
-                    if( !aim_bounds.is_point_inside( trajectory_point ) ) {
+                    if( trajectory_point == aim_point && guy->is_hallucination() ) {
+                        p->add_msg_if_player( _( "Strange... %s's not visible on the picture?" ), guy->name );
+                    } else if( !aim_bounds.is_point_inside( trajectory_point ) ) {
                         // take a photo of the monster that's in the way
                         p->add_msg_if_player( m_warning, _( "%s got in the way of your photo." ), guy->name );
                         incorrect_focus = true;
