@@ -230,6 +230,7 @@
 #include "faction.h"
 #include "behavior.h"
 #include "avatar.h"
+#include "scent_block.h"
 
 #if defined(TILES)
 #include "cata_tiles.h"
